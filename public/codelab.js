@@ -30,8 +30,8 @@ function renderProgress() {
   document.getElementById('progressFill').style.width = `${pct}%`;
 
   const badge = document.getElementById('headerProgressBadge');
-  badge.textContent = `${count} / ${TOTAL_STEPS} STEPS COMPLETE`;
-  badge.className = count === TOTAL_STEPS ? 'badge badge-pass' : 'badge badge-cyan';
+  badge.textContent = `${count} / ${TOTAL_STEPS} steps`;
+  badge.className = count === TOTAL_STEPS ? 'status-chip status-pass' : 'status-chip status-neutral';
 
   document.querySelectorAll('.toc-item').forEach((li) => {
     const step = Number.parseInt(li.getAttribute('data-step'), 10);
@@ -44,8 +44,8 @@ function renderProgress() {
     card.classList.toggle('completed', isDone);
     const btn = card.querySelector('.step-toggle');
     if (btn) {
-      btn.textContent = isDone ? 'Completed' : 'Mark Complete';
-      btn.className = isDone ? 'btn btn-sm btn-primary step-toggle' : 'btn btn-sm step-toggle';
+      btn.textContent = isDone ? 'Done' : 'Mark done';
+      btn.className = isDone ? 'tb-btn active step-toggle' : 'tb-btn step-toggle';
     }
   });
 }
@@ -73,15 +73,15 @@ document.querySelectorAll('.copy-btn').forEach((btn) => {
     if (!pre) return;
     try {
       await navigator.clipboard.writeText(pre.textContent.trim());
-      btn.textContent = 'Copied!';
+      btn.textContent = 'Copied';
       setTimeout(() => {
         btn.textContent = 'Copy';
-      }, 1500);
+      }, 1400);
     } catch {
-      btn.textContent = 'Select & Ctrl+C';
+      btn.textContent = 'Ctrl+C';
       setTimeout(() => {
         btn.textContent = 'Copy';
-      }, 1500);
+      }, 1400);
     }
   });
 });

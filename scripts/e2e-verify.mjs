@@ -2,7 +2,7 @@
 /**
  * QNX Pulse Studio - Headless Playwright E2E Verification & Screenshot Capture
  * Verifies 0 console errors, 0 page errors, 0px horizontal overflow on desktop (1440) & mobile (390)
- * for both `/` and `/codelab.html`, and captures 4 crisp hackathon PNGs into `assets/`.
+ * for both `/` and `/codelab.html`, and captures 4 crisp PNGs into `assets/`.
  *
  * Run with:
  *   set NODE_PATH=C:\Users\user\.claude\mostaql\torn-zone\zone-devvit\node_modules
@@ -109,43 +109,70 @@ async function main() {
 
     results.homeDesktopOverflow = await checkOverflow(page);
 
-    // Verify interactive preset switch (clean -> inversion)
-    await page.click('[data-preset="surgical-arm-clean"]');
+    // Verify capture selector switch (clean -> inversion)
+    await page.selectOption('#captureSelect', 'surgical-arm-clean');
     const cleanBadge = await page.textContent('#verdictBadge');
-    if (!cleanBadge.includes('EXIT 0')) {
-      throw new Error(`Expected EXIT 0 on surgical-arm-clean, got: ${cleanBadge}`);
+    if (!cleanBadge.toLowerCase().includes('exit 0')) {
+      throw new Error(`Expected exit 0 on surgical-arm-clean, got: ${cleanBadge}`);
     }
-    await page.click('[data-preset="brake-ecu-inversion"]');
+
+    // Verify deadline budget edit updates status
+    await page.fill('#deadlineInput', '100');
+    await page.dispatchEvent('#deadlineInput', 'input');
+    const tightBadge = await page.textContent('#verdictBadge');
+    if (!tightBadge.toLowerCase().includes('exit 2')) {
+      throw new Error(`Expected exit 2 when deadline is tightened to 100us, got: ${tightBadge}`);
+    }
+    await page.fill('#deadlineInput', '500');
+    await page.dispatchEvent('#deadlineInput', 'input');
+    await page.evaluate(() => document.activeElement?.blur());
+
+    // Switch back to brake-ecu-inversion
+    await page.selectOption('#captureSelect', 'brake-ecu-inversion');
     const failBadge = await page.textContent('#verdictBadge');
-    if (!failBadge.includes('EXIT 2')) {
-      throw new Error(`Expected EXIT 2 on brake-ecu-inversion, got: ${failBadge}`);
+    if (!failBadge.toLowerCase().includes('exit 2')) {
+      throw new Error(`Expected exit 2 on brake-ecu-inversion, got: ${failBadge}`);
     }
     results.presetSwitchOk = true;
 
-    // Hover over inversion band to populate live inspector for crisp screenshot
+    // Click inversion band to populate statusbar readout
     const firstHit = page.locator('#timelineSvg .svg-hit').first();
     await firstHit.dispatchEvent('click');
 
-    // Screenshot 1: IPC & Priority Inversion Timeline (1440x900)
+    // Screenshot 1: Full Workbench with Trace Timeline + Findings Table (1440x900)
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: path.join(ASSETS_DIR, 'screen_1_ipc_timeline.png'), fullPage: false });
 
-    // Thumbnail: 1280x720 crisp hero overview
+    // Thumbnail: 1280x720 crisp Perfetto/Wireshark overview
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: path.join(ASSETS_DIR, 'thumbnail.png'), fullPage: false });
 
-    // Screenshot 2: slog2 + pidin + PPS Inspector (1440x900 scrolled to diagnosticsSection)
+    // Verify all inspector tabs and capture Screen 2 on slog2info tab (1440x900)
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.locator('#diagnosticsSection').scrollIntoViewIfNeeded();
-    await page.evaluate(() => {
-      const el = document.getElementById('diagnosticsSection');
-      if (el) window.scrollTo(0, el.offsetTop - 78);
-    });
+    await page.click('#tabPidin');
+    const pidinRows = await page.locator('#pidinBody tr').count();
+    if (pidinRows < 5) throw new Error(`Expected >= 5 pidin rows, got ${pidinRows}`);
+
+    await page.click('#tabPps');
+    const ppsRows = await page.locator('#ppsBody tr').count();
+    if (ppsRows < 5) throw new Error(`Expected >= 5 /pps rows, got ${ppsRows}`);
+
+    await page.click('#tabCli');
+    const cliBlocks = await page.locator('#cliPane .cli-row').count();
+    if (cliBlocks < 3) throw new Error(`Expected >= 3 CLI blocks, got ${cliBlocks}`);
+
+    await page.click('#tabSlog2');
+    const slogRows = await page.locator('#slogBody tr').count();
+    if (slogRows < 5) throw new Error(`Expected >= 5 slog2 rows, got ${slogRows}`);
+    results.inspectorTabsOk = true;
+
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: path.join(ASSETS_DIR, 'screen_2_slog2_pps.png'), fullPage: false });
 
     // 2. Mobile 390px `/` overflow check
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.click('#tabFindings');
     await page.evaluate(() => window.scrollTo(0, 0));
     results.homeMobileOverflow = await checkOverflow(page);
 
@@ -164,10 +191,10 @@ async function main() {
     }
     results.codelabChecklistOk = true;
 
-    // Screenshot 3: `/codelab.html` scrolled nicely to show sidebar + Step 7 Before/After Diff & metrics
+    // Screenshot 3: `/codelab.html` showing left sidebar + Step 6 & Step 7 Before/After Diff & comparison table
     await page.evaluate(() => {
       const el = document.getElementById('step-6');
-      if (el) window.scrollTo(0, el.offsetTop - 74);
+      if (el) window.scrollTo(0, el.offsetTop - 48);
     });
     await page.screenshot({ path: path.join(ASSETS_DIR, 'screen_3_codelab.png'), fullPage: false });
 

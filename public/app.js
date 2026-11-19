@@ -2,20 +2,32 @@ import { analyzeCapture, formatJsonReport, formatMarkdownReport } from './engine
 import { PRESETS } from './engine/presets.js';
 
 const STATE_COLORS = {
-  RUNNING: '#10B981',
-  PI_BOOST: '#00D4FF',
-  MUTEX: '#EF4444',
-  REPLY: '#F59E0B',
-  SEND: '#F59E0B',
-  RECEIVE: '#38BDF8',
-  READY: '#A855F7',
-  SLEEP: '#334155'
+  RUNNING: '#3FB950',
+  PI_BOOST: '#2F9E8F',
+  MUTEX: '#D94848',
+  REPLY: '#D29922',
+  SEND: '#D29922',
+  RECEIVE: '#4C9AFF',
+  READY: '#6E7681',
+  SLEEP: '#2A3038'
+};
+
+const STATE_TEXT_COLORS = {
+  RUNNING: '#0C1116',
+  PI_BOOST: '#0C1116',
+  MUTEX: '#FFF5F5',
+  REPLY: '#0C1116',
+  SEND: '#0C1116',
+  RECEIVE: '#0C1116',
+  READY: '#E6EDF3',
+  SLEEP: '#8B949E'
 };
 
 let currentBundle = PRESETS['brake-ecu-inversion'];
 let currentPresetId = 'brake-ecu-inversion';
 let currentDeadlineUs = 500;
 let currentReport = null;
+let activeTab = 'findings';
 
 const el = (id) => document.getElementById(id);
 
@@ -39,49 +51,40 @@ function downloadFile(filename, content, mime) {
   URL.revokeObjectURL(url);
 }
 
-function renderKpis(report) {
+function renderSummary(report) {
   const badge = el('verdictBadge');
   if (report.status === 'PASS') {
-    badge.className = 'badge badge-pass';
-    badge.innerHTML = '<span class="pulse-dot"></span><span>RT PASS · EXIT 0</span>';
+    badge.className = 'status-chip status-pass';
+    badge.textContent = `PASS exit 0 · max ${report.jitterStats.maxUs}µs`;
   } else {
-    badge.className = 'badge badge-fail';
-    badge.innerHTML = '<span class="pulse-dot"></span><span>RT VIOLATION · EXIT 2</span>';
+    badge.className = 'status-chip status-fail';
+    badge.textContent = `FAIL exit ${report.exitCode} · max ${report.jitterStats.maxUs}µs`;
   }
 
-  const scoreEl = el('kpiScore');
-  scoreEl.textContent = `${report.score}/100`;
-  scoreEl.className = `kpi-value ${report.score >= 90 ? 'val-emerald' : report.score >= 60 ? 'val-amber' : 'val-crimson'}`;
-  el('kpiVerdictSub').textContent = `Verdict: ${report.status} (CI Exit ${report.exitCode})`;
+  el('sumTarget').textContent = report.meta?.target || 'x86_64-neutrino-8.0 (procnto-smp-instr)';
+  el('sumThreads').textContent = `${report.summary.totalThreads} (${report.summary.fifoThreads} FIFO)`;
 
-  const invEl = el('kpiInversions');
-  invEl.textContent = String(report.summary.priorityInversions);
-  invEl.className = `kpi-value ${report.summary.priorityInversions > 0 ? 'val-crimson' : 'val-emerald'}`;
-  el('kpiInvSub').textContent =
-    report.inversionBands.length > 0
-      ? `Peak stall: ${report.inversionBands[0].durationUs} us`
-      : 'Zero SCHED_FIFO inversions';
+  const jitEl = el('sumJitter');
+  jitEl.textContent = `${report.jitterStats.maxUs}µs`;
+  jitEl.className = `sum-v ${report.jitterStats.maxUs > report.options.deadlineUs ? 'is-bad' : 'is-ok'}`;
 
-  const jitEl = el('kpiMaxJitter');
-  jitEl.textContent = `${report.jitterStats.maxUs} us`;
-  jitEl.className = `kpi-value ${report.jitterStats.maxUs > report.options.deadlineUs ? 'val-crimson' : 'val-emerald'}`;
-  el('kpiJitterSub').textContent = `P95 ${report.jitterStats.p95Us}us · Budget ${report.options.deadlineUs}us`;
+  const invEl = el('sumInversions');
+  if (report.summary.priorityInversions > 0) {
+    const peakUs = report.inversionBands[0]?.durationUs ?? 0;
+    invEl.textContent = `${report.summary.priorityInversions} (${peakUs}µs)`;
+    invEl.className = 'sum-v is-bad';
+  } else {
+    invEl.textContent = '0';
+    invEl.className = 'sum-v is-ok';
+  }
 
-  const chEl = el('kpiChains');
-  chEl.textContent = String(report.summary.ipcBlockChains);
-  chEl.className = `kpi-value ${report.summary.ipcBlockChains > 0 ? 'val-amber' : 'val-emerald'}`;
-  el('kpiChainsSub').textContent = `${report.ipcEdges.length} traced IPC hops`;
+  const blkEl = el('sumBlocked');
+  blkEl.textContent = String(report.summary.ipcBlockChains);
+  blkEl.className = `sum-v ${report.summary.ipcBlockChains > 0 ? 'is-warn' : 'is-ok'}`;
 
-  const stEl = el('kpiStarved');
+  const stEl = el('sumStarved');
   stEl.textContent = String(report.summary.starvedThreads);
-  stEl.className = `kpi-value ${report.summary.starvedThreads > 0 ? 'val-amber' : 'val-emerald'}`;
-  el('kpiStarvedSub').textContent =
-    report.starvationFindings.length > 0
-      ? `${report.starvationFindings[0].threadName}: ${report.starvationFindings[0].waitedUs}us`
-      : 'Zero starved READY threads';
-
-  el('kpiThreads').textContent = String(report.summary.totalThreads);
-  el('kpiThreadsSub').textContent = `${report.summary.fifoThreads} SCHED_FIFO · ${report.summary.totalTraceEvents} events`;
+  stEl.className = `sum-v ${report.summary.starvedThreads > 0 ? 'is-warn' : 'is-ok'}`;
 }
 
 function renderSvgTimeline(report) {
@@ -89,17 +92,19 @@ function renderSvgTimeline(report) {
   const lanes = report.timelineLanes;
   const duration = Math.max(report.timelineDurationUs || 1000, 200);
 
-  const leftPad = 195;
-  const rightPad = 24;
-  const topPad = 56;
-  const laneH = 44;
-  const bottomPad = 32;
-  const width = 1160;
+  const width = 1280;
+  const leftPad = 204;
+  const rightPad = 20;
+  const rulerH = 26;
+  const bannerH = report.inversionBands.length > 0 ? 18 : 6;
+  const topPad = rulerH + bannerH;
+  const laneH = 42;
+  const bottomPad = 10;
   const plotW = width - leftPad - rightPad;
-  const height = Math.max(240, topPad + lanes.length * laneH + bottomPad);
+  const height = Math.max(220, topPad + lanes.length * laneH + bottomPad);
 
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  el('timelineMeta').textContent = `${lanes.length} lanes · ${duration} us window · ${report.ipcEdges.length} IPC arrows`;
+  el('timelineMeta').textContent = `${lanes.length} threads · ${duration}µs window · ${report.ipcEdges.length} IPC`;
 
   const xOf = (us) => leftPad + (Math.max(0, Math.min(duration, us)) / duration) * plotW;
   const yOfLane = (idx) => topPad + idx * laneH;
@@ -110,44 +115,59 @@ function renderSvgTimeline(report) {
   let markup = `
     <defs>
       <pattern id="invHatch" width="8" height="8" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
-        <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(239,68,68,0.45)" stroke-width="2" />
+        <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(217,72,72,0.22)" stroke-width="1.5" />
       </pattern>
-      <marker id="arrowSend" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-        <path d="M 0 1 L 10 5 L 0 9 z" fill="#F59E0B" />
+      <marker id="arrowSend" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+        <path d="M 0 1 L 8 4 L 0 7 z" fill="#D29922" />
       </marker>
-      <marker id="arrowReply" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-        <path d="M 0 1 L 10 5 L 0 9 z" fill="#10B981" />
+      <marker id="arrowReply" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+        <path d="M 0 1 L 8 4 L 0 7 z" fill="#3FB950" />
       </marker>
-      <marker id="arrowPulse" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-        <path d="M 0 1 L 10 5 L 0 9 z" fill="#00D4FF" />
+      <marker id="arrowPulse" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+        <path d="M 0 1 L 8 4 L 0 7 z" fill="#4C9AFF" />
       </marker>
     </defs>
+
+    <!-- Canvas & Perfetto-style Left Track Gutter + Top Ruler -->
+    <rect x="0" y="0" width="${width}" height="${height}" fill="#121417" />
+    <rect x="0" y="0" width="${leftPad}" height="${height}" fill="#181B20" />
+    <rect x="0" y="0" width="${width}" height="${rulerH}" fill="#181B20" />
+    <line x1="0" y1="${rulerH}" x2="${width}" y2="${rulerH}" stroke="#262B33" stroke-width="1" />
+    <line x1="${leftPad}" y1="0" x2="${leftPad}" y2="${height}" stroke="#262B33" stroke-width="1" />
+    <text x="10" y="17" fill="#8B949E" font-family="monospace" font-size="10.5" font-weight="600">PRIO  THREAD (PID:TID)</text>
   `;
 
-  // Vertical time gridlines
-  const tickCount = 8;
+  // Vertical hairline gridlines & ruler ticks in us
+  const tickCount = 10;
   for (let i = 0; i <= tickCount; i++) {
     const us = Math.round((duration / tickCount) * i);
     const x = xOf(us);
-    markup += `<line x1="${x.toFixed(1)}" y1="${topPad - 24}" x2="${x.toFixed(1)}" y2="${height - bottomPad}" stroke="#162230" stroke-width="1" />`;
-    markup += `<text x="${x.toFixed(1)}" y="${topPad - 32}" fill="#688099" font-family="monospace" font-size="10.5" text-anchor="middle">${us}us</text>`;
+    const anchor = i === 0 ? 'start' : i === tickCount ? 'end' : 'middle';
+    const labelX = i === 0 ? x + 2 : i === tickCount ? x - 2 : x;
+
+    markup += `<line x1="${x.toFixed(1)}" y1="${rulerH}" x2="${x.toFixed(1)}" y2="${height - bottomPad}" stroke="#1E232A" stroke-width="1" />`;
+    markup += `<line x1="${x.toFixed(1)}" y1="${rulerH - 5}" x2="${x.toFixed(1)}" y2="${rulerH}" stroke="#485261" stroke-width="1" />`;
+    markup += `<text x="${labelX.toFixed(1)}" y="${rulerH - 9}" fill="#8B949E" font-family="monospace" font-size="10" text-anchor="${anchor}">${us}µs</text>`;
   }
 
-  // Priority Inversion vertical highlight bands
+  // Priority Inversion vertical band
   for (const inv of report.inversionBands) {
     const x1 = xOf(inv.startUs);
     const x2 = xOf(inv.endUs);
     const w = Math.max(4, x2 - x1);
     const bandH = lanes.length * laneH;
+    const labelW = Math.min(Math.max(w, 240), 300);
     const tip = escapeHtml(
-      `PRIORITY INVERSION (${inv.durationUs}us): ${inv.highThread.name}[p${inv.highThread.prio}] blocked on ${inv.lowOwner.name}[p${inv.lowOwner.prio}] while ${inv.mediumThread.name}[p${inv.mediumThread.prio}] ran on CPU${inv.cpu}`
+      `PRIORITY INVERSION (${inv.durationUs}µs): ${inv.highThread.name}[${inv.highThread.prio}f] blocked on ${inv.lowOwner.name}[${inv.lowOwner.prio}f] while ${inv.mediumThread.name}[${inv.mediumThread.prio}f] ran on CPU${inv.cpu}`
     );
     markup += `
       <g class="svg-hit" data-tip="${tip}" style="cursor:pointer;">
-        <rect x="${x1.toFixed(1)}" y="${topPad}" width="${w.toFixed(1)}" height="${bandH}" fill="rgba(239,68,68,0.14)" />
-        <rect x="${x1.toFixed(1)}" y="${topPad}" width="${w.toFixed(1)}" height="${bandH}" fill="url(#invHatch)" stroke="#EF4444" stroke-width="1.2" stroke-dasharray="4 3" />
-        <rect x="${x1.toFixed(1)}" y="${topPad - 22}" width="${Math.min(Math.max(w, 290), 340).toFixed(1)}" height="19" rx="4" fill="#EF4444" />
-        <text x="${(x1 + 8).toFixed(1)}" y="${topPad - 9}" fill="#FFFFFF" font-family="monospace" font-size="10.5" font-weight="700">INVERSION ${inv.durationUs}us (p${inv.highThread.prio} stalled by p${inv.mediumThread.prio})</text>
+        <rect x="${x1.toFixed(1)}" y="${topPad}" width="${w.toFixed(1)}" height="${bandH}" fill="rgba(217,72,72,0.10)" />
+        <rect x="${x1.toFixed(1)}" y="${topPad}" width="${w.toFixed(1)}" height="${bandH}" fill="url(#invHatch)" />
+        <line x1="${x1.toFixed(1)}" y1="${rulerH}" x2="${x1.toFixed(1)}" y2="${topPad + bandH}" stroke="#D94848" stroke-width="1" stroke-dasharray="3 2" />
+        <line x1="${x2.toFixed(1)}" y1="${rulerH}" x2="${x2.toFixed(1)}" y2="${topPad + bandH}" stroke="#D94848" stroke-width="1" stroke-dasharray="3 2" />
+        <rect x="${x1.toFixed(1)}" y="${rulerH + 1}" width="${labelW.toFixed(1)}" height="16" rx="1" fill="#3B1A1E" stroke="#D94848" stroke-width="0.8" />
+        <text x="${(x1 + 6).toFixed(1)}" y="${rulerH + 12}" fill="#F07171" font-family="monospace" font-size="10" font-weight="600">INVERSION ${inv.durationUs}µs (p${inv.highThread.prio} stalled by p${inv.mediumThread.prio})</text>
       </g>
     `;
   }
@@ -157,41 +177,53 @@ function renderSvgTimeline(report) {
     const y = yOfLane(idx);
     const midY = y + laneH / 2;
 
-    markup += `<line x1="${leftPad}" y1="${y + laneH}" x2="${width - rightPad}" y2="${y + laneH}" stroke="#131e2a" stroke-width="1" />`;
+    if (idx % 2 === 1) {
+      markup += `<rect x="${leftPad + 1}" y="${y}" width="${width - leftPad - 1}" height="${laneH}" fill="rgba(255,255,255,0.012)" />`;
+    }
+    markup += `<line x1="0" y1="${y + laneH}" x2="${width}" y2="${y + laneH}" stroke="#262B33" stroke-width="1" />`;
 
-    // Left lane label
-    const prioColor = lane.priority >= 55 ? '#00D4FF' : lane.priority >= 35 ? '#F59E0B' : '#9FB3C8';
+    // Left track header
+    const prioBorder = lane.priority >= 55 ? '#4C9AFF' : lane.priority >= 35 ? '#D29922' : '#485261';
+    const prioText = lane.priority >= 55 ? '#8FC1FF' : lane.priority >= 35 ? '#E3B341' : '#8B949E';
     markup += `
-      <rect x="10" y="${y + 7}" width="38" height="22" rx="4" fill="rgba(0,212,255,0.1)" stroke="${prioColor}" stroke-opacity="0.5" />
-      <text x="29" y="${y + 22}" fill="${prioColor}" font-family="monospace" font-size="11" font-weight="700" text-anchor="middle">${lane.priority}f</text>
-      <text x="56" y="${y + 18}" fill="#E8F1F8" font-family="monospace" font-size="11.5" font-weight="600">${escapeHtml(lane.threadName.slice(0, 17))}</text>
-      <text x="56" y="${y + 32}" fill="#688099" font-family="monospace" font-size="10">pid ${lane.pid}:${lane.tid}</text>
+      <rect x="8" y="${y + 9}" width="34" height="19" rx="2" fill="#121417" stroke="${prioBorder}" stroke-width="0.9" />
+      <text x="25" y="${y + 22}" fill="${prioText}" font-family="monospace" font-size="10.5" font-weight="600" text-anchor="middle">${lane.priority}f</text>
+      <text x="50" y="${y + 17}" fill="#E6EDF3" font-family="monospace" font-size="11.5" font-weight="600">${escapeHtml(lane.threadName.slice(0, 18))}</text>
+      <text x="50" y="${y + 30}" fill="#8B949E" font-family="monospace" font-size="9.5">${lane.pid}:${lane.tid}</text>
     `;
 
-    // Segments
+    // Execution bars (flat Perfetto style, 1px radius)
     for (const seg of lane.segments) {
       const sx = xOf(seg.startUs);
       const ex = xOf(seg.endUs);
-      const sw = Math.max(3, ex - sx);
-      const fill = STATE_COLORS[seg.state] || '#64748B';
-      const opacity = seg.state === 'SLEEP' ? '0.45' : '0.9';
+      const sw = Math.max(2, ex - sx);
+      const fill = STATE_COLORS[seg.state] || '#6E7681';
+      const txtColor = STATE_TEXT_COLORS[seg.state] || '#E6EDF3';
       const tip = escapeHtml(
-        `${lane.threadName} (${lane.id}, prio ${seg.prio}f) · ${seg.state} · ${seg.startUs}us -> ${seg.endUs}us (${seg.durationUs}us) · CPU${seg.cpu}${seg.detail ? ' · ' + seg.detail : ''}`
+        `${lane.threadName} (${lane.id}, ${seg.prio}f) | ${seg.state} | ${seg.startUs}µs..${seg.endUs}µs (${seg.durationUs}µs) | CPU${seg.cpu}${seg.detail ? ' | ' + seg.detail : ''}`
       );
+      const barH = 20;
+      const barY = midY - barH / 2;
+      const label = `${seg.state} ${seg.durationUs}µs`;
+      const fitsFull = sw > label.length * 6.2 + 10;
+      const fitsShort = !fitsFull && sw > 36;
+
       markup += `
         <g class="svg-hit" data-tip="${tip}" style="cursor:pointer;">
-          <rect x="${sx.toFixed(1)}" y="${(midY - 10).toFixed(1)}" width="${sw.toFixed(1)}" height="20" rx="3" fill="${fill}" fill-opacity="${opacity}" stroke="#070B0F" stroke-width="0.8" />
+          <rect x="${sx.toFixed(1)}" y="${barY.toFixed(1)}" width="${sw.toFixed(1)}" height="${barH}" rx="1" fill="${fill}" stroke="#121417" stroke-width="0.8" />
           ${
-            sw > 58
-              ? `<text x="${(sx + 6).toFixed(1)}" y="${(midY + 3.5).toFixed(1)}" fill="#070B0F" font-family="monospace" font-size="9.5" font-weight="700">${escapeHtml(seg.state)} ${seg.durationUs}us</text>`
-              : ''
+            fitsFull
+              ? `<text x="${(sx + 5).toFixed(1)}" y="${(midY + 3.5).toFixed(1)}" fill="${txtColor}" font-family="monospace" font-size="9.5" font-weight="600">${escapeHtml(label)}</text>`
+              : fitsShort
+                ? `<text x="${(sx + 4).toFixed(1)}" y="${(midY + 3.5).toFixed(1)}" fill="${txtColor}" font-family="monospace" font-size="9" font-weight="600">${seg.durationUs}µs</text>`
+                : ''
           }
         </g>
       `;
     }
   });
 
-  // Directed IPC arrows (SEND / REPLY / PULSE)
+  // Directed IPC arrows
   for (const edge of report.ipcEdges) {
     const fromIdx = laneIndex.get(edge.fromId);
     const toIdx = laneIndex.get(edge.toId);
@@ -200,225 +232,320 @@ function renderSvgTimeline(report) {
     const x = xOf(edge.timeUs);
     const y1 = yOfLane(fromIdx) + laneH / 2;
     const y2 = yOfLane(toIdx) + laneH / 2;
-    const stroke = edge.kind === 'PULSE' ? '#00D4FF' : edge.kind === 'REPLY' ? '#10B981' : '#F59E0B';
+    const stroke = edge.kind === 'PULSE' ? '#4C9AFF' : edge.kind === 'REPLY' ? '#3FB950' : '#D29922';
     const marker = edge.kind === 'PULSE' ? 'url(#arrowPulse)' : edge.kind === 'REPLY' ? 'url(#arrowReply)' : 'url(#arrowSend)';
     const dash = edge.kind === 'PULSE' ? '3 2' : '';
     const tip = escapeHtml(
-      `IPC ${edge.kind} @ ${edge.timeUs}us: ${edge.fromName} (${edge.fromId}) -> ${edge.toName} (${edge.toId})${edge.detail ? ' · ' + edge.detail : ''}`
+      `IPC ${edge.kind} @ ${edge.timeUs}µs | ${edge.fromName} (${edge.fromId}) -> ${edge.toName} (${edge.toId})${edge.detail ? ' | ' + edge.detail : ''}`
     );
 
     markup += `
       <g class="svg-hit" data-tip="${tip}" style="cursor:pointer;">
-        <line x1="${x.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${stroke}" stroke-width="2" ${dash ? `stroke-dasharray="${dash}"` : ''} marker-end="${marker}" />
-        <circle cx="${x.toFixed(1)}" cy="${y1.toFixed(1)}" r="3" fill="${stroke}" />
+        <line x1="${x.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${stroke}" stroke-width="1.5" ${dash ? `stroke-dasharray="${dash}"` : ''} marker-end="${marker}" />
+        <circle cx="${x.toFixed(1)}" cy="${y1.toFixed(1)}" r="2.2" fill="${stroke}" />
       </g>
     `;
   }
 
-  // Axis footer label
-  markup += `<text x="${leftPad}" y="${height - 10}" fill="#688099" font-family="monospace" font-size="10.5">QNX Neutrino 8.0 Kernel Trace Timeline (microseconds from capture origin)</text>`;
   svg.innerHTML = markup;
 
   const inspector = el('timelineInspector');
   svg.querySelectorAll('.svg-hit').forEach((node) => {
     const show = () => {
-      inspector.innerHTML = `<span style="color:var(--text-0);">${node.getAttribute('data-tip')}</span><span class="mono" style="color:var(--cyan);">LIVE KERNEL INSPECTOR</span>`;
+      inspector.innerHTML = `<span>${node.getAttribute('data-tip')}</span><span class="status-right">clock: SYSPAGE(qtime)</span>`;
     };
     node.addEventListener('mouseenter', show);
     node.addEventListener('click', show);
   });
 }
 
+function getFilterQuery() {
+  return (el('inspectorFilter')?.value || '').trim().toLowerCase();
+}
+
 function renderFindings(report) {
-  el('findingsCount').textContent = `${report.findings.length} finding${report.findings.length === 1 ? '' : 's'}`;
-  const grid = el('findingsGrid');
+  el('tabFindings').textContent = `Findings (${report.findings.length})`;
+  const tbody = el('findingsBody');
+  const q = getFilterQuery();
 
   if (report.findings.length === 0) {
-    grid.innerHTML = `
-      <div class="finding-card" style="border-left-color: var(--emerald);">
-        <div class="finding-head">
-          <div class="finding-title">All Hard Real-Time Constraints Satisfied</div>
-          <span class="badge badge-pass">PASS · EXIT 0</span>
-        </div>
-        <div class="finding-desc">
-          Zero priority inversions, zero deadline violations above ${report.options.deadlineUs} us (max observed: ${report.jitterStats.maxUs} us), and zero starved SCHED_FIFO threads.
-        </div>
-        <div class="finding-fix">Verified: PTHREAD_PRIO_INHERIT priority boost kept critical section bounded.</div>
-      </div>
+    tbody.innerHTML = `
+      <tr>
+        <td class="col-nowrap"><span class="tag tag-PASS">PASS</span></td>
+        <td class="col-nowrap col-ok">RT_GATE</td>
+        <td class="col-wrap">All real-time constraints satisfied (exit 0)</td>
+        <td class="col-wrap col-muted">0 priority inversions, max jitter ${report.jitterStats.maxUs}µs within ${report.options.deadlineUs}µs budget, 0 starved threads.</td>
+        <td class="col-mono-wrap col-ok">Verified PTHREAD_PRIO_INHERIT priority boost on contended mutex.</td>
+      </tr>
     `;
     return;
   }
 
-  grid.innerHTML = report.findings
-    .map(
-      (f) => `
-      <article class="finding-card sev-${escapeHtml(f.severity)}">
-        <div class="finding-head">
-          <div class="finding-title">${escapeHtml(f.title)}</div>
-          <span class="sev-tag sev-${escapeHtml(f.severity)}">${escapeHtml(f.severity)}</span>
-        </div>
-        <div class="finding-desc">${escapeHtml(f.description)}</div>
-        <div class="finding-fix">Fix: ${escapeHtml(f.remediation)}</div>
-      </article>
-    `
-    )
-    .join('');
-}
-
-function renderSlog2(report) {
-  const sevFilter = el('slogSeverityFilter').value;
-  const query = el('slogSearch').value.trim().toLowerCase();
-
-  const filtered = report.logs.filter((l) => {
-    if (sevFilter !== 'ALL' && l.severity !== sevFilter) return false;
-    if (query) {
-      const hay = `${l.buffer}.${l.pid ?? ''} ${l.code} ${l.severity} ${l.message}`.toLowerCase();
-      if (!hay.includes(query)) return false;
-    }
-    return true;
+  const rows = report.findings.filter((f) => {
+    if (!q) return true;
+    const hay = `${f.severity} ${f.category} ${f.title} ${f.description} ${f.remediation}`.toLowerCase();
+    return hay.includes(q);
   });
 
-  const list = el('slogList');
-  if (!filtered.length) {
-    list.innerHTML = '<div style="padding:14px;color:var(--text-2);">No slog2 entries match current filter.</div>';
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="col-muted">No findings match current filter.</td></tr>';
     return;
   }
 
-  list.innerHTML = filtered
+  tbody.innerHTML = rows
     .map(
-      (l) => `
-      <div class="slog-row">
-        <span class="slog-ts">${escapeHtml(l.timestamp.replace(/^[A-Za-z]+\s+\d+\s+/, ''))}</span>
-        <span class="slog-buf">${escapeHtml(l.buffer)}${l.pid ? '.' + l.pid : ''}</span>
-        <span class="sev-tag sev-${escapeHtml(l.severity)}">${escapeHtml(l.severity)}</span>
-        <span class="slog-msg">${escapeHtml(l.message)}</span>
-      </div>
-    `
-    )
-    .join('');
-}
-
-function renderPidin(report) {
-  const tbody = el('pidinBody');
-  tbody.innerHTML = report.threads
-    .map(
-      (t) => `
+      (f) => `
       <tr>
-        <td style="color:var(--cyan);">${escapeHtml(t.id)}</td>
-        <td>${escapeHtml(t.process)}</td>
-        <td>${escapeHtml(t.threadName)}</td>
-        <td><strong>${t.priority}${escapeHtml(t.policyCode)}</strong> <span style="color:var(--text-2);font-size:10.5px;">${escapeHtml(t.policy.replace('SCHED_', ''))}</span></td>
-        <td><span class="state-pill state-${escapeHtml(t.state)}">${escapeHtml(t.state)}</span></td>
-        <td style="color:${t.blockedOn ? '#fbbf24' : 'var(--text-2)'};">${escapeHtml(t.blockedOn ? t.blockedOn.raw : '-')}</td>
+        <td class="col-nowrap"><span class="tag tag-${escapeHtml(f.severity)}">${escapeHtml(f.severity)}</span></td>
+        <td class="col-nowrap col-muted">${escapeHtml(f.category)}</td>
+        <td class="col-wrap">${escapeHtml(f.title)}</td>
+        <td class="col-wrap col-muted">${escapeHtml(f.description)}</td>
+        <td class="col-mono-wrap col-ok">${escapeHtml(f.remediation)}</td>
       </tr>
     `
     )
     .join('');
 }
 
-function renderPps(report) {
-  const grid = el('ppsGrid');
-  if (!report.ppsObjects.length) {
-    grid.innerHTML = '<div style="color:var(--text-2);">No /pps/ objects present in this capture.</div>';
+function renderSlog2(report) {
+  el('tabSlog2').textContent = `slog2info (${report.logs.length})`;
+  const sevFilter = el('slogSeverityFilter').value;
+  const q = getFilterQuery();
+
+  const filtered = report.logs.filter((l) => {
+    if (sevFilter !== 'ALL' && l.severity !== sevFilter) return false;
+    if (q) {
+      const hay = `${l.timestamp} ${l.buffer}.${l.pid ?? ''} ${l.code} ${l.severity} ${l.message}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const tbody = el('slogBody');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="col-muted">No slog2info entries match current filter.</td></tr>';
     return;
   }
 
-  grid.innerHTML = report.ppsObjects
-    .map((obj) => {
-      const attrs = Object.values(obj.attributes)
-        .map((a) => {
-          const valText = typeof a.value === 'object' ? JSON.stringify(a.value) : String(a.value);
-          const isAlert =
-            valText.includes('DEGRADED') ||
-            valText.includes('INVERSION') ||
-            (a.key === 'inversion_detected' && a.value === true);
-          return `
-            <div class="pps-attr-row">
-              <span class="pps-key">${escapeHtml(a.key)}<span class="pps-enc">${escapeHtml(a.encoding)}</span></span>
-              <span class="pps-val ${isAlert ? 'alert' : ''}">${escapeHtml(valText)}</span>
-            </div>
-          `;
-        })
-        .join('');
+  tbody.innerHTML = filtered
+    .map(
+      (l) => `
+      <tr>
+        <td class="col-nowrap col-muted">${escapeHtml(l.timestamp.replace(/^[A-Za-z]+\s+\d+\s+/, ''))}</td>
+        <td class="col-nowrap col-accent">${escapeHtml(l.buffer)}${l.pid ? '.' + l.pid : ''}</td>
+        <td class="col-nowrap col-muted">${escapeHtml(l.code)}</td>
+        <td class="col-nowrap"><span class="tag tag-${escapeHtml(l.severity)}">${escapeHtml(l.severity)}</span></td>
+        <td class="col-mono-wrap">${escapeHtml(l.message)}</td>
+      </tr>
+    `
+    )
+    .join('');
+}
 
+function renderPidin(report) {
+  el('tabPidin').textContent = `pidin -F (${report.threads.length})`;
+  const q = getFilterQuery();
+  const rows = report.threads.filter((t) => {
+    if (!q) return true;
+    const hay = `${t.id} ${t.process} ${t.threadName} ${t.priority}${t.policyCode} ${t.policy} ${t.state} ${t.blockedOn?.raw || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  const tbody = el('pidinBody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="col-muted">No pidin threads match current filter.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows
+    .map((t) => {
+      const isBlocked = t.state === 'MUTEX' || t.state === 'SEND' || t.state === 'REPLY';
       return `
-        <div class="pps-card">
-          <div class="pps-card-head">
-            <span>${escapeHtml(obj.path)}</span>
-            <span style="color:var(--text-2);font-size:10.5px;">${Object.keys(obj.attributes).length} attrs</span>
-          </div>
-          <div>${attrs}</div>
-        </div>
+        <tr class="${isBlocked ? 'row-blocked' : ''}">
+          <td class="col-nowrap col-accent">${escapeHtml(t.id)}</td>
+          <td class="col-nowrap">${escapeHtml(t.process)}</td>
+          <td class="col-nowrap">${escapeHtml(t.threadName)}</td>
+          <td class="col-nowrap"><strong>${t.priority}${escapeHtml(t.policyCode)}</strong></td>
+          <td class="col-nowrap col-muted">${escapeHtml(t.policy)}</td>
+          <td class="col-nowrap"><span class="tag tag-${escapeHtml(t.state)}">${escapeHtml(t.state)}</span></td>
+          <td class="col-nowrap ${t.blockedOn ? 'col-warn' : 'col-muted'}">${escapeHtml(t.blockedOn ? t.blockedOn.raw : '-')}</td>
+        </tr>
       `;
     })
     .join('');
 }
 
-function runAnalysis() {
-  currentReport = analyzeCapture(currentBundle, { deadlineUs: currentDeadlineUs });
+function renderPps(report) {
+  el('tabPps').textContent = `/pps (${report.ppsObjects.length})`;
+  const tbody = el('ppsBody');
+  const q = getFilterQuery();
 
-  el('scenarioTitle').textContent = currentReport.meta?.name || 'Custom QNX 8.0 Capture';
-  el('scenarioDesc').textContent =
-    PRESETS[currentPresetId]?.description ||
-    'Live analysis of user-imported QNX 8.0 slog2, pidin, traceprinter, and /pps/ diagnostic streams.';
-  el('scenarioTarget').textContent = currentReport.meta?.target || 'x86_64-neutrino-8.0';
+  const flatRows = [];
+  for (const obj of report.ppsObjects) {
+    for (const attr of Object.values(obj.attributes)) {
+      const valText = typeof attr.value === 'object' ? JSON.stringify(attr.value) : String(attr.value);
+      const isAlert =
+        valText.includes('DEGRADED') ||
+        valText.includes('INVERSION') ||
+        (attr.key === 'inversion_detected' && attr.value === true);
+      flatRows.push({ path: obj.path, key: attr.key, enc: attr.encoding, valText, isAlert });
+    }
+  }
 
-  renderKpis(currentReport);
-  renderSvgTimeline(currentReport);
+  const filtered = flatRows.filter((r) => {
+    if (!q) return true;
+    return `${r.path} ${r.key} ${r.enc} ${r.valText}`.toLowerCase().includes(q);
+  });
+
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="col-muted">No /pps attributes match current filter.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered
+    .map(
+      (r) => `
+      <tr>
+        <td class="col-nowrap col-accent">${escapeHtml(r.path)}</td>
+        <td class="col-nowrap">${escapeHtml(r.key)}</td>
+        <td class="col-nowrap col-muted">${escapeHtml(r.enc)}</td>
+        <td class="col-mono-wrap ${r.isAlert ? 'col-bad' : 'col-ok'}">${escapeHtml(r.valText)}</td>
+      </tr>
+    `
+    )
+    .join('');
+}
+
+function renderCliPane(report) {
+  const sampleDir = currentPresetId === 'custom' ? '/path/to/capture-dir' : `samples/${currentPresetId}`;
+  const deadline = report.options.deadlineUs;
+  const commands = [
+    {
+      label: 'Run host CLI audit (returns exit 0 on PASS, exit 2 on RT violation)',
+      cmd: `node cli/qnx-pulse.mjs analyze ${sampleDir} --deadline ${deadline}`
+    },
+    {
+      label: 'Generate JSON report for CI pipeline gating',
+      cmd: `node cli/qnx-pulse.mjs analyze ${sampleDir} --deadline ${deadline} --format json --out report.json`
+    },
+    {
+      label: 'Generate Markdown audit report',
+      cmd: `node cli/qnx-pulse.mjs analyze ${sampleDir} --deadline ${deadline} --format markdown --out report.md`
+    },
+    {
+      label: 'Capture synchronized diagnostics on QNX Neutrino 8.0 target',
+      cmd: `/proc/boot/capture-diag.sh /tmp/capture-${currentPresetId} 3`
+    }
+  ];
+
+  const pane = el('cliPane');
+  pane.innerHTML = commands
+    .map(
+      (item, idx) => `
+      <div class="cli-row">
+        <div class="cli-row-head">
+          <span>${escapeHtml(item.label)}</span>
+          <button class="tb-btn cli-copy-btn" data-cli-idx="${idx}" type="button">Copy</button>
+        </div>
+        <pre>${escapeHtml(item.cmd)}</pre>
+      </div>
+    `
+    )
+    .join('');
+
+  pane.querySelectorAll('.cli-copy-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const idx = Number.parseInt(btn.getAttribute('data-cli-idx'), 10);
+      const cmd = commands[idx]?.cmd;
+      if (!cmd) return;
+      try {
+        await navigator.clipboard.writeText(cmd);
+        btn.textContent = 'Copied';
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+        }, 1200);
+      } catch {
+        btn.textContent = 'Ctrl+C';
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+        }, 1200);
+      }
+    });
+  });
+}
+
+function setActiveTab(tabId) {
+  activeTab = tabId;
+  document.querySelectorAll('.insp-tab').forEach((btn) => {
+    const isSel = btn.getAttribute('data-tab') === tabId;
+    btn.classList.toggle('active', isSel);
+    btn.setAttribute('aria-selected', isSel ? 'true' : 'false');
+  });
+
+  el('paneFindings').classList.toggle('hidden', tabId !== 'findings');
+  el('paneSlog2').classList.toggle('hidden', tabId !== 'slog2');
+  el('panePidin').classList.toggle('hidden', tabId !== 'pidin');
+  el('panePps').classList.toggle('hidden', tabId !== 'pps');
+  el('paneCli').classList.toggle('hidden', tabId !== 'cli');
+
+  el('slogSeverityFilter').classList.toggle('hidden', tabId !== 'slog2');
+  el('inspectorFilter').classList.toggle('hidden', tabId === 'cli');
+}
+
+function renderActiveTable() {
+  if (!currentReport) return;
   renderFindings(currentReport);
   renderSlog2(currentReport);
   renderPidin(currentReport);
   renderPps(currentReport);
+  renderCliPane(currentReport);
+}
+
+function runAnalysis() {
+  currentReport = analyzeCapture(currentBundle, { deadlineUs: currentDeadlineUs });
+  renderSummary(currentReport);
+  renderSvgTimeline(currentReport);
+  renderActiveTable();
+}
+
+function selectPreset(id) {
+  if (!PRESETS[id]) return;
+  currentPresetId = id;
+  currentBundle = PRESETS[id];
+  const sel = el('captureSelect');
+  if (sel.value !== id) sel.value = id;
+  runAnalysis();
 }
 
 function setupInteractions() {
-  // Preset switcher
-  document.querySelectorAll('.preset-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.getAttribute('data-preset');
-      if (!PRESETS[id]) return;
-      currentPresetId = id;
-      currentBundle = PRESETS[id];
-      document.querySelectorAll('.preset-btn').forEach((b) => b.classList.toggle('active', b === btn));
+  // Capture dropdown switcher
+  const sel = el('captureSelect');
+  sel.addEventListener('change', () => {
+    if (PRESETS[sel.value]) {
+      selectPreset(sel.value);
+    }
+  });
+
+  // Deadline numeric input
+  const deadlineInput = el('deadlineInput');
+  deadlineInput.addEventListener('input', () => {
+    const parsed = Number.parseInt(deadlineInput.value, 10);
+    if (!Number.isNaN(parsed) && parsed >= 10) {
+      currentDeadlineUs = parsed;
       runAnalysis();
-    });
+    }
   });
 
-  // Deadline threshold slider
-  const slider = el('deadlineSlider');
-  slider.addEventListener('input', () => {
-    currentDeadlineUs = Number.parseInt(slider.value, 10);
-    el('deadlineValue').textContent = `${currentDeadlineUs} us`;
-    runAnalysis();
-  });
-
-  // slog2 filters
-  el('slogSeverityFilter').addEventListener('change', () => renderSlog2(currentReport));
-  el('slogSearch').addEventListener('input', () => renderSlog2(currentReport));
-
-  // Diagnostic view tabs
-  document.querySelectorAll('.tab-btn').forEach((btn) => {
+  // Inspector tabs
+  document.querySelectorAll('.insp-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const view = btn.getAttribute('data-view');
-      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
-      const grid = el('diagGrid');
-      const pSlog = el('paneSlog2');
-      const pPidin = el('panePidin');
-      const pPps = el('panePps');
-
-      if (view === 'all') {
-        grid.classList.remove('single-col');
-        pSlog.classList.remove('hidden');
-        pPidin.classList.remove('hidden');
-        pPps.classList.remove('hidden');
-      } else {
-        grid.classList.add('single-col');
-        pSlog.classList.toggle('hidden', view !== 'slog2');
-        pPidin.classList.toggle('hidden', view !== 'pidin');
-        pPps.classList.toggle('hidden', view !== 'pps');
-      }
+      setActiveTab(btn.getAttribute('data-tab'));
     });
   });
+
+  // Shared live filter + slog2 severity dropdown
+  el('inspectorFilter').addEventListener('input', () => renderActiveTable());
+  el('slogSeverityFilter').addEventListener('change', () => renderSlog2(currentReport));
 
   // Export buttons
   el('btnExportJson').addEventListener('click', () => {
@@ -428,7 +555,7 @@ function setupInteractions() {
     downloadFile(`qnx-pulse-audit-${currentPresetId}.md`, formatMarkdownReport(currentReport), 'text/markdown');
   });
 
-  // Custom Capture Importer
+  // Open Capture Importer Drawer
   const importPanel = el('importPanel');
   el('btnToggleImport').addEventListener('click', () => {
     importPanel.classList.toggle('hidden');
@@ -468,9 +595,8 @@ function setupInteractions() {
 
   el('btnRunCustom').addEventListener('click', () => {
     currentPresetId = 'custom';
-    document.querySelectorAll('.preset-btn').forEach((b) => b.classList.remove('active'));
     currentBundle = {
-      meta: { name: 'Custom Imported QNX 8.0 Bundle', target: 'x86_64-neutrino-8.0 (Custom)' },
+      meta: { name: 'Custom QNX 8.0 Capture', target: 'x86_64-neutrino-8.0 (custom)' },
       pidin: el('inputPidin').value,
       trace: el('inputTrace').value,
       slog2: el('inputSlog2').value,
@@ -486,11 +612,10 @@ function setupInteractions() {
   if (urlPreset && PRESETS[urlPreset]) {
     currentPresetId = urlPreset;
     currentBundle = PRESETS[urlPreset];
-    document
-      .querySelectorAll('.preset-btn')
-      .forEach((b) => b.classList.toggle('active', b.getAttribute('data-preset') === urlPreset));
+    sel.value = urlPreset;
   }
 }
 
 setupInteractions();
+setActiveTab('findings');
 runAnalysis();

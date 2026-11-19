@@ -3,258 +3,211 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QNX Pulse Studio — QNX Neutrino 8.0 RT Trace, IPC & Priority-Inversion Workbench</title>
-  <meta name="description" content="Industrial QNX Neutrino 8.0 oscilloscope workbench for traceprinter IPC timelines, priority inversion auditing, slog2 streams, pidin thread tables, and /pps/ object trees." />
+  <title>qnx-pulse | QNX Neutrino 8.0 Trace &amp; IPC Analyzer</title>
+  <meta name="description" content="QNX Neutrino 8.0 kernel trace timeline, priority inversion analyzer, slog2info log viewer, pidin thread table, and /pps object inspector." />
   <link rel="stylesheet" href="./styles.css" />
 </head>
-<body>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00D4FF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="2 12 6 12 9 4 14 20 17 12 22 12" />
-          </svg>
-        </div>
-        <div>
-          <div class="brand-title">
-            QNX PULSE STUDIO
-            <span class="badge badge-cyan">NEUTRINO 8.0</span>
-          </div>
-          <div class="brand-sub">IPC TRACE OSCILLOSCOPE · PRIORITY-INVERSION AUDITOR · HOST CLI</div>
-        </div>
-      </div>
+<body class="workbench-body">
+  <!-- Compact 36px Top Toolbar -->
+  <header class="toolbar">
+    <div class="toolbar-left">
+      <a href="./index.html" class="wordmark">qnx-pulse <span class="wordmark-ver">v1.0</span></a>
+      <span class="tb-sep" aria-hidden="true"></span>
 
-      <nav class="nav-links" aria-label="Primary">
-        <a href="./index.html" class="nav-pill active">Telemetry Workbench</a>
-        <a href="./codelab.html" class="nav-pill">7-Step QNX 8.0 Codelab</a>
-      </nav>
+      <label class="tb-field" for="captureSelect">
+        <select id="captureSelect" class="tb-select" aria-label="Select capture bundle">
+          <option value="brake-ecu-inversion">brake-ecu-inversion.cap</option>
+          <option value="surgical-arm-clean">surgical-arm-clean.cap</option>
+          <option value="qemu-starter">qemu-starter.cap</option>
+        </select>
+      </label>
 
-      <div class="top-actions">
-        <span id="verdictBadge" class="badge badge-fail"><span class="pulse-dot"></span><span>RT VIOLATION · EXIT 2</span></span>
-        <button id="btnExportJson" class="btn btn-sm" type="button">Export JSON</button>
-        <button id="btnExportMd" class="btn btn-sm btn-primary" type="button">Export Markdown</button>
-      </div>
+      <label class="tb-field" for="deadlineInput">
+        <span>Deadline:</span>
+        <input id="deadlineInput" class="tb-input tb-input-num" type="number" min="50" max="5000" step="25" value="500" aria-label="Deadline budget in microseconds" />
+        <span>µs</span>
+      </label>
+
+      <span class="tb-sep" aria-hidden="true"></span>
+      <button id="btnToggleImport" class="tb-btn" type="button">Open capture...</button>
+      <button id="btnExportJson" class="tb-btn" type="button">Export JSON</button>
+      <button id="btnExportMd" class="tb-btn" type="button">Export MD</button>
+      <a href="./codelab.html" class="tb-btn">Codelab</a>
+    </div>
+
+    <div class="toolbar-right">
+      <span id="verdictBadge" class="status-chip status-fail">FAIL exit 2 · max 1842.4µs</span>
     </div>
   </header>
 
-  <main class="container">
-    <!-- Presets & Threshold Controls -->
-    <section class="control-strip" aria-label="Capture Controls">
-      <div class="preset-group" role="group" aria-label="QNX 8.0 Capture Presets">
-        <button class="preset-btn active" data-preset="brake-ecu-inversion" type="button">
-          <span>Brake ECU Inversion</span>
-          <span class="preset-tag tag-fail">EXIT 2</span>
-        </button>
-        <button class="preset-btn" data-preset="surgical-arm-clean" type="button">
-          <span>Surgical Arm (Fixed PI)</span>
-          <span class="preset-tag tag-pass">EXIT 0</span>
-        </button>
-        <button class="preset-btn" data-preset="qemu-starter" type="button">
-          <span>QEMU x86_64 Starter</span>
-          <span class="preset-tag tag-warn">IPC SPIKE</span>
-        </button>
-      </div>
+  <!-- Compact 28px Summary Strip -->
+  <div id="summaryStrip" class="summary-strip" role="region" aria-label="Capture telemetry summary">
+    <span class="sum-item"><span class="sum-k">target:</span><span id="sumTarget" class="sum-v">x86_64-neutrino-8.0 (procnto-smp-instr)</span></span>
+    <span class="sum-item"><span class="sum-k">threads:</span><span id="sumThreads" class="sum-v">7 (5 FIFO)</span></span>
+    <span class="sum-item"><span class="sum-k">max jitter:</span><span id="sumJitter" class="sum-v is-bad">1842.4µs</span></span>
+    <span class="sum-item"><span class="sum-k">inversions:</span><span id="sumInversions" class="sum-v is-bad">1 (1390µs)</span></span>
+    <span class="sum-item"><span class="sum-k">blocked ipc:</span><span id="sumBlocked" class="sum-v is-warn">2</span></span>
+    <span class="sum-item"><span class="sum-k">starved:</span><span id="sumStarved" class="sum-v is-warn">1</span></span>
+  </div>
 
-      <div class="slider-group">
-        <label class="slider-label" for="deadlineSlider">
-          RT Deadline Budget:
-          <strong id="deadlineValue">500 us</strong>
-          <input id="deadlineSlider" type="range" min="100" max="1000" step="25" value="500" />
-        </label>
-        <button id="btnToggleImport" class="btn btn-sm" type="button">Import Capture Files</button>
-      </div>
-    </section>
-
-    <section id="scenarioBanner" class="scenario-banner">
+  <!-- Collapsible Capture Importer Drawer -->
+  <section id="importPanel" class="import-drawer hidden" aria-label="Open QNX 8.0 capture files">
+    <div class="import-head">
+      <span class="import-title">Open QNX 8.0 capture bundle (pidin / traceprinter / slog2info / /pps)</span>
+      <button id="btnCloseImport" class="tb-btn" type="button">Close</button>
+    </div>
+    <div id="dropzone" class="dropzone">
+      <span>Drop pidin.txt, trace.csv, slog2.log, pps_telemetry.pps here or select files:</span>
+      <input id="fileInput" type="file" multiple accept=".log,.txt,.csv,.pps" />
+    </div>
+    <div class="import-grid">
       <div>
-        <strong id="scenarioTitle">Automotive Brake ECU (PTHREAD_PRIO_NONE Inversion)</strong> —
-        <span id="scenarioDesc">Loading QNX 8.0 diagnostic capture...</span>
+        <div class="import-col-label">pidin -F "%a %b %p %J %S %h"</div>
+        <textarea id="inputPidin" class="textarea-flat" placeholder="Paste pidin output..."></textarea>
       </div>
-      <span id="scenarioTarget" class="mono" style="font-size: 11.5px; color: var(--cyan);">x86_64-neutrino-8.0</span>
-    </section>
+      <div>
+        <div class="import-col-label">traceprinter CSV / trace</div>
+        <textarea id="inputTrace" class="textarea-flat" placeholder="Paste traceprinter output..."></textarea>
+      </div>
+      <div>
+        <div class="import-col-label">slog2info</div>
+        <textarea id="inputSlog2" class="textarea-flat" placeholder="Paste slog2info output..."></textarea>
+      </div>
+      <div>
+        <div class="import-col-label">/pps object dump</div>
+        <textarea id="inputPps" class="textarea-flat" placeholder="Paste /pps/qnx/telemetry dump..."></textarea>
+      </div>
+    </div>
+    <div class="import-actions">
+      <button id="btnRunCustom" class="tb-btn tb-btn-primary" type="button">Analyze capture</button>
+    </div>
+  </section>
 
-    <!-- Custom Capture Importer (Collapsible) -->
-    <section id="importPanel" class="panel hidden" aria-label="Custom QNX 8.0 Capture Importer">
-      <div class="panel-header">
-        <div class="panel-title">Custom QNX 8.0 Capture Importer <code>slog2 / pidin / traceprinter / pps</code></div>
-        <button id="btnCloseImport" class="btn btn-sm" type="button">Close</button>
-      </div>
-      <div class="panel-body">
-        <div id="dropzone" class="dropzone">
-          Drag &amp; drop QNX 8.0 capture files (<code>slog2.log</code>, <code>pidin.txt</code>, <code>trace.csv</code>, <code>pps_telemetry.pps</code>) here, or select files below.
-          <div style="margin-top: 10px;">
-            <input id="fileInput" type="file" multiple accept=".log,.txt,.csv,.pps" />
-          </div>
+  <!-- Main IDE Split Workspace -->
+  <main class="workbench-main">
+    <!-- Top 55-60%: Full-Bleed Kernel Trace Timeline -->
+    <section class="timeline-pane" id="timelineSection" aria-label="Kernel trace timeline">
+      <div class="pane-bar">
+        <div class="pane-title">
+          <span>Trace Timeline</span>
+          <span id="timelineMeta" class="pane-meta">6 lanes · 1980µs · 5 IPC edges</span>
         </div>
-        <div class="import-grid">
-          <div>
-            <div class="kpi-label" style="margin-bottom: 5px;">pidin -F "%a %b %p %J %S %h"</div>
-            <textarea id="inputPidin" class="textarea-dark" placeholder="Paste pidin output..."></textarea>
-          </div>
-          <div>
-            <div class="kpi-label" style="margin-bottom: 5px;">traceprinter CSV / Native Trace</div>
-            <textarea id="inputTrace" class="textarea-dark" placeholder="Paste traceprinter CSV..."></textarea>
-          </div>
-          <div>
-            <div class="kpi-label" style="margin-bottom: 5px;">slog2info Stream</div>
-            <textarea id="inputSlog2" class="textarea-dark" placeholder="Paste slog2info output..."></textarea>
-          </div>
-          <div>
-            <div class="kpi-label" style="margin-bottom: 5px;">/pps/ Object State</div>
-            <textarea id="inputPps" class="textarea-dark" placeholder="Paste /pps/qnx/telemetry output..."></textarea>
-          </div>
-        </div>
-        <div style="margin-top: 12px; display: flex; justify-content: flex-end; gap: 10px;">
-          <button id="btnRunCustom" class="btn btn-primary" type="button">Run Live QNX 8.0 RT Audit</button>
+        <div class="legend" aria-label="Thread state legend">
+          <span class="legend-item"><span class="swatch" style="background:#3FB950"></span>RUNNING</span>
+          <span class="legend-item"><span class="swatch" style="background:#2F9E8F"></span>PI_BOOST</span>
+          <span class="legend-item"><span class="swatch" style="background:#D94848"></span>MUTEX</span>
+          <span class="legend-item"><span class="swatch" style="background:#D29922"></span>SEND/REPLY</span>
+          <span class="legend-item"><span class="swatch" style="background:#4C9AFF"></span>RECEIVE</span>
+          <span class="legend-item"><span class="swatch" style="background:#6E7681"></span>READY</span>
+          <span class="legend-item"><span class="swatch" style="background:rgba(217,72,72,0.28);border:1px solid #D94848"></span>INVERSION</span>
         </div>
       </div>
-    </section>
 
-    <!-- KPI Telemetry Strip -->
-    <section class="kpi-grid" aria-label="Real-Time Telemetry Metrics">
-      <div class="kpi-card">
-        <span class="kpi-label">RT Determinism Score</span>
-        <span id="kpiScore" class="kpi-value val-crimson">--</span>
-        <span id="kpiVerdictSub" class="kpi-sub">CI Exit Code --</span>
+      <div class="timeline-scroll">
+        <svg id="timelineSvg" class="timeline-svg" viewBox="0 0 1280 284" role="img" aria-label="QNX Neutrino thread state and IPC timeline"></svg>
       </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Priority Inversions</span>
-        <span id="kpiInversions" class="kpi-value val-crimson">--</span>
-        <span id="kpiInvSub" class="kpi-sub">SCHED_FIFO contention</span>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Max Loop Jitter</span>
-        <span id="kpiMaxJitter" class="kpi-value val-amber">--</span>
-        <span id="kpiJitterSub" class="kpi-sub">P95 -- | Budget 500us</span>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Blocked IPC Chains</span>
-        <span id="kpiChains" class="kpi-value val-amber">--</span>
-        <span id="kpiChainsSub" class="kpi-sub">SEND / REPLY / MUTEX</span>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Starved Threads</span>
-        <span id="kpiStarved" class="kpi-value val-cyan">--</span>
-        <span id="kpiStarvedSub" class="kpi-sub">READY wait &gt; 1000us</span>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Active QNX Threads</span>
-        <span id="kpiThreads" class="kpi-value val-emerald">--</span>
-        <span id="kpiThreadsSub" class="kpi-sub">SCHED_FIFO lanes</span>
+
+      <div id="timelineInspector" class="timeline-statusbar">
+        <span>Click or hover any state bar, IPC edge, or inversion window to inspect event details.</span>
+        <span class="status-right">clock: SYSPAGE(qtime) · traceprinter</span>
       </div>
     </section>
 
-    <!-- Interactive SVG Microkernel IPC & Priority Timeline -->
-    <section class="panel" id="timelineSection" aria-label="QNX Microkernel IPC and Priority Timeline">
-      <div class="panel-header">
-        <div class="panel-title">
-          QNX Microkernel IPC &amp; SCHED_FIFO Priority Timeline
-          <code id="timelineMeta">traceprinter .kev</code>
+    <!-- Bottom 40-44%: Wireshark-Style Tabbed Inspector -->
+    <section class="inspector-pane" id="diagnosticsSection" aria-label="Capture inspector">
+      <div class="tab-strip">
+        <div class="tab-list" role="tablist">
+          <button id="tabFindings" class="insp-tab active" data-tab="findings" role="tab" aria-selected="true" type="button">Findings (0)</button>
+          <button id="tabSlog2" class="insp-tab" data-tab="slog2" role="tab" aria-selected="false" type="button">slog2info</button>
+          <button id="tabPidin" class="insp-tab" data-tab="pidin" role="tab" aria-selected="false" type="button">pidin -F</button>
+          <button id="tabPps" class="insp-tab" data-tab="pps" role="tab" aria-selected="false" type="button">/pps</button>
+          <button id="tabCli" class="insp-tab" data-tab="cli" role="tab" aria-selected="false" type="button">CLI Command</button>
         </div>
-        <div class="legend">
-          <span class="legend-item"><span class="swatch" style="background:#10B981"></span>RUNNING</span>
-          <span class="legend-item"><span class="swatch" style="background:#00D4FF"></span>PI_BOOST</span>
-          <span class="legend-item"><span class="swatch" style="background:#EF4444"></span>MUTEX BLOCK</span>
-          <span class="legend-item"><span class="swatch" style="background:#F59E0B"></span>SEND / REPLY</span>
-          <span class="legend-item"><span class="swatch" style="background:#38BDF8"></span>RECEIVE</span>
-          <span class="legend-item"><span class="swatch" style="background:#A855F7"></span>READY</span>
-          <span class="legend-item"><span class="swatch" style="background:rgba(239,68,68,0.45);border:1px solid #EF4444"></span>INVERSION BAND</span>
-        </div>
-      </div>
-      <div class="panel-body">
-        <div class="timeline-wrap">
-          <svg id="timelineSvg" class="timeline-svg" viewBox="0 0 1160 360" role="img" aria-label="QNX SCHED_FIFO priority and IPC timeline"></svg>
-        </div>
-        <div id="timelineInspector" class="timeline-inspector">
-          <span>Hover or click any execution bar, IPC arrow, or Priority Inversion band to inspect microsecond kernel telemetry.</span>
-          <span class="mono" style="color: var(--cyan);">SYSPAGE(qtime) · 1kHz Hard-RT Scope</span>
+        <div class="tab-controls">
+          <select id="slogSeverityFilter" class="filter-select hidden" aria-label="Filter slog2 severity">
+            <option value="ALL">sev: all</option>
+            <option value="CRITICAL">CRITICAL</option>
+            <option value="ERROR">ERROR</option>
+            <option value="WARNING">WARNING</option>
+            <option value="INFO">INFO</option>
+          </select>
+          <input id="inspectorFilter" class="filter-input" type="search" placeholder="Filter rows..." aria-label="Filter active inspector rows" />
         </div>
       </div>
-    </section>
 
-    <!-- RT Audit Findings -->
-    <section class="panel" aria-label="Detected Real-Time Findings">
-      <div class="panel-header">
-        <div class="panel-title">
-          Real-Time Audit Findings &amp; QNX 8.0 Remediations
-          <code id="findingsCount">0 findings</code>
+      <div class="inspector-body">
+        <!-- Findings Table -->
+        <div id="paneFindings">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Sev</th>
+                <th>Category</th>
+                <th>Summary</th>
+                <th>Detail</th>
+                <th>Remediation</th>
+              </tr>
+            </thead>
+            <tbody id="findingsBody"></tbody>
+          </table>
         </div>
-        <a href="./codelab.html#step-7" class="btn btn-sm btn-primary">View PTHREAD_PRIO_INHERIT Fix in Codelab &rarr;</a>
-      </div>
-      <div class="panel-body">
-        <div id="findingsGrid" class="findings-grid"></div>
-      </div>
-    </section>
 
-    <!-- Diagnostic Inspector Tabs (All Panels / slog2 / pidin / PPS) -->
-    <section class="panel" id="diagnosticsSection" aria-label="Diagnostic Streams">
-      <div class="panel-header">
-        <div class="panel-title">Target Diagnostic Streams <code>slog2info · pidin · /pps/</code></div>
-        <div class="tab-bar" role="tablist">
-          <button class="tab-btn active" data-view="all" type="button">Split View (All)</button>
-          <button class="tab-btn" data-view="slog2" type="button">slog2 Stream</button>
-          <button class="tab-btn" data-view="pidin" type="button">pidin Threads</button>
-          <button class="tab-btn" data-view="pps" type="button">/pps/ Object Tree</button>
+        <!-- slog2info Table -->
+        <div id="paneSlog2" class="hidden">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Buffer.PID</th>
+                <th>Code</th>
+                <th>Sev</th>
+                <th>Message</th>
+              </tr>
+            </thead>
+            <tbody id="slogBody"></tbody>
+          </table>
         </div>
-      </div>
-      <div class="panel-body">
-        <div id="diagGrid" class="diag-grid">
-          <!-- slog2 Panel -->
-          <div id="paneSlog2">
-            <div class="filter-row">
-              <strong class="mono" style="font-size:12px;color:var(--cyan);">slog2info</strong>
-              <select id="slogSeverityFilter" class="input-dark" style="flex:0 0 auto;min-width:120px;">
-                <option value="ALL">All Severities</option>
-                <option value="CRITICAL">CRITICAL</option>
-                <option value="ERROR">ERROR</option>
-                <option value="WARNING">WARNING</option>
-                <option value="INFO">INFO</option>
-              </select>
-              <input id="slogSearch" class="input-dark" type="search" placeholder="Filter buffer, pid, jitter_us..." />
-            </div>
-            <div id="slogList" class="slog-list"></div>
-          </div>
 
-          <!-- pidin Panel -->
-          <div id="panePidin">
-            <div class="filter-row">
-              <strong class="mono" style="font-size:12px;color:var(--cyan);">pidin -F "%a %b %p %J %S %h"</strong>
-            </div>
-            <div class="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>PID:TID</th>
-                    <th>Process</th>
-                    <th>Thread</th>
-                    <th>Prio</th>
-                    <th>State</th>
-                    <th>Blocked On</th>
-                  </tr>
-                </thead>
-                <tbody id="pidinBody"></tbody>
-              </table>
-            </div>
-          </div>
+        <!-- pidin -F Table -->
+        <div id="panePidin" class="hidden">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>PID:TID</th>
+                <th>Process</th>
+                <th>Thread</th>
+                <th>Prio</th>
+                <th>Policy</th>
+                <th>State</th>
+                <th>Blocked On</th>
+              </tr>
+            </thead>
+            <tbody id="pidinBody"></tbody>
+          </table>
+        </div>
 
-          <!-- PPS Panel -->
-          <div id="panePps" style="grid-column: 1 / -1;">
-            <div class="filter-row" style="margin-top: 4px;">
-              <strong class="mono" style="font-size:12px;color:var(--cyan);">/pps/ Persistent Publish/Subscribe Tree</strong>
-              <span class="mono" style="font-size:11px;color:var(--text-2);">Typed encodings: n=numeric · b=bool · s=string · json=structured</span>
-            </div>
-            <div id="ppsGrid" class="pps-grid"></div>
-          </div>
+        <!-- /pps Table -->
+        <div id="panePps" class="hidden">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Object Path</th>
+                <th>Attribute</th>
+                <th>Enc</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody id="ppsBody"></tbody>
+          </table>
+        </div>
+
+        <!-- CLI Command Pane -->
+        <div id="paneCli" class="hidden">
+          <div id="cliPane" class="cli-pane"></div>
         </div>
       </div>
     </section>
   </main>
-
-  <footer class="footer">
-    <span>QNX Pulse Studio v1.0.0 · Built for QNX Global Hackathon 2026 (MIT License)</span>
-    <span>CLI: <code>npx qnx-pulse analyze samples/brake-ecu-inversion --deadline 500</code></span>
-  </footer>
 
   <script type="module" src="./app.js"></script>
 </body>

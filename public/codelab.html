@@ -3,48 +3,34 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>7-Step QNX 8.0 Codelab — Catching &amp; Fixing Priority Inversion | QNX Pulse Studio</title>
-  <meta name="description" content="Hands-on 7-step QNX Neutrino 8.0 Codelab: cross-compile with qcc, assemble a bootable mkifs image, boot QEMU x86_64, reproduce priority inversion, and fix it with PTHREAD_PRIO_INHERIT." />
+  <title>qnx-pulse | QNX Neutrino 8.0 Priority Inversion Codelab</title>
+  <meta name="description" content="7-step QNX Neutrino 8.0 technical guide: cross-compile with qcc, assemble an instrumented IFS with mkifs, boot QEMU x86_64, reproduce priority inversion, and fix with PTHREAD_PRIO_INHERIT." />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00D4FF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="2 12 6 12 9 4 14 20 17 12 22 12" />
-          </svg>
-        </div>
-        <div>
-          <div class="brand-title">
-            QNX PULSE STUDIO
-            <span class="badge badge-cyan">7-STEP CODELAB</span>
-          </div>
-          <div class="brand-sub">QNX NEUTRINO 8.0 · QEMU x86_64 · PTHREAD_PRIO_INHERIT</div>
-        </div>
-      </div>
+  <!-- Compact 36px Top Toolbar (shared with Workbench) -->
+  <header class="toolbar">
+    <div class="toolbar-left">
+      <a href="./index.html" class="wordmark">qnx-pulse <span class="wordmark-ver">v1.0</span></a>
+      <span class="tb-sep" aria-hidden="true"></span>
+      <a href="./index.html" class="tb-btn">Trace Workbench</a>
+      <a href="./codelab.html" class="tb-btn active">Codelab</a>
+    </div>
 
-      <nav class="nav-links" aria-label="Primary">
-        <a href="./index.html" class="nav-pill">Telemetry Workbench</a>
-        <a href="./codelab.html" class="nav-pill active">7-Step QNX 8.0 Codelab</a>
-      </nav>
-
-      <div class="top-actions">
-        <span id="headerProgressBadge" class="badge badge-cyan">0 / 7 STEPS COMPLETE</span>
-        <a href="./index.html?preset=brake-ecu-inversion" class="btn btn-sm btn-primary">Open Live Trace &rarr;</a>
-      </div>
+    <div class="toolbar-right">
+      <span id="headerProgressBadge" class="status-chip status-neutral">0 / 7 steps</span>
+      <a href="./index.html?preset=brake-ecu-inversion" class="tb-btn tb-btn-primary">Open trace</a>
     </div>
   </header>
 
-  <div class="codelab-layout">
-    <!-- Left Progress Sidebar -->
-    <aside class="codelab-sidebar" aria-label="Codelab Progress">
+  <div class="docs-shell">
+    <!-- Left Step Sidebar -->
+    <aside class="docs-sidebar" aria-label="Codelab navigation">
       <div>
-        <div class="kpi-label">Codelab Progress</div>
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin:6px 0;">
-          <strong id="progressLabel" class="mono" style="color:var(--cyan);">0 of 7 completed</strong>
-          <span id="progressPct" class="mono" style="font-size:12px;color:var(--text-2);">0%</span>
+        <div class="docs-side-label">QNX 8.0 Codelab</div>
+        <div class="progress-row">
+          <span id="progressLabel">0 of 7 completed</span>
+          <span id="progressPct" class="col-muted">0%</span>
         </div>
         <div class="progress-track">
           <div id="progressFill" class="progress-fill"></div>
@@ -52,256 +38,265 @@
       </div>
 
       <ul class="toc-list" id="tocList">
-        <li class="toc-item" data-step="1"><a href="#step-1"><span class="mono">01</span> Init QNX SDP 8.0</a></li>
-        <li class="toc-item" data-step="2"><a href="#step-2"><span class="mono">02</span> Build C11 Target (qcc)</a></li>
-        <li class="toc-item" data-step="3"><a href="#step-3"><span class="mono">03</span> Assemble IFS (mkifs)</a></li>
-        <li class="toc-item" data-step="4"><a href="#step-4"><span class="mono">04</span> Boot QEMU x86_64</a></li>
-        <li class="toc-item" data-step="5"><a href="#step-5"><span class="mono">05</span> Inject Inversion &amp; Capture</a></li>
-        <li class="toc-item" data-step="6"><a href="#step-6"><span class="mono">06</span> Diagnose with qnx-pulse</a></li>
-        <li class="toc-item" data-step="7"><a href="#step-7"><span class="mono">07</span> Fix with PRIO_INHERIT</a></li>
+        <li class="toc-item" data-step="1"><a href="#step-1"><span class="toc-num">01</span><span>Init QNX SDP 8.0</span></a></li>
+        <li class="toc-item" data-step="2"><a href="#step-2"><span class="toc-num">02</span><span>Build C11 targets (qcc)</span></a></li>
+        <li class="toc-item" data-step="3"><a href="#step-3"><span class="toc-num">03</span><span>Build IFS (mkifs)</span></a></li>
+        <li class="toc-item" data-step="4"><a href="#step-4"><span class="toc-num">04</span><span>Boot QEMU x86_64</span></a></li>
+        <li class="toc-item" data-step="5"><a href="#step-5"><span class="toc-num">05</span><span>Inject inversion &amp; capture</span></a></li>
+        <li class="toc-item" data-step="6"><a href="#step-6"><span class="toc-num">06</span><span>Analyze with qnx-pulse</span></a></li>
+        <li class="toc-item" data-step="7"><a href="#step-7"><span class="toc-num">07</span><span>Fix with PRIO_INHERIT</span></a></li>
       </ul>
 
-      <div style="border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:8px;">
-        <div class="mono" style="font-size:11px;color:var(--text-2);">Duration: ~35 min · QNX SDP 8.0</div>
-        <button id="btnResetProgress" class="btn btn-sm" type="button">Reset Checklist</button>
+      <div class="docs-side-foot">
+        <span>Target: x86_64-neutrino-8.0</span>
+        <span>Kernel: procnto-smp-instr</span>
+        <button id="btnResetProgress" class="tb-btn" type="button">Reset progress</button>
       </div>
     </aside>
 
-    <!-- Main 7 Steps -->
-    <main>
-      <section class="step-card" style="border-left:3px solid var(--cyan);">
-        <span class="badge badge-cyan" style="margin-bottom:8px;">QNX GLOBAL HACKATHON 2026 · HANDS-ON TUTORIAL</span>
-        <h1 style="margin:6px 0 8px;font-size:24px;line-height:1.25;">Catching &amp; Fixing Real-Time Priority Inversion on QNX Neutrino 8.0</h1>
-        <p style="margin:0;color:var(--text-1);">
-          Go end-to-end from raw QNX 8.0 C11 microkernel IPC (<code>name_attach</code>, <code>MsgReceive</code>/<code>MsgReply</code>, <code>MsgSendPulse</code>, <code>ClockCycles</code>, <code>/pps/qnx/telemetry</code>) to a bootable QEMU x86_64 IFS image, reproduce a real 1,842 us deadline violation, and cut worst-case jitter by <strong>93.9%</strong> using <code>PTHREAD_PRIO_INHERIT</code> with automated CI gating.
+    <!-- Main Technical Documentation -->
+    <main class="docs-content">
+      <header class="docs-header">
+        <div class="docs-kicker">CODELAB · QNX SDP 8.0 · QEMU x86_64 · ~35 MIN</div>
+        <h1>Reproducing and Fixing Priority Inversion on QNX Neutrino 8.0</h1>
+        <p>
+          Build two QNX 8.0 C11 processes (<code>sensor_broker</code> and <code>motor_ctrl</code>) using <code>name_attach</code>, <code>MsgReceive</code>/<code>MsgReply</code>, <code>MsgSendPulse</code>, <code>ClockCycles</code>, and <code>/pps/qnx/telemetry</code>. Boot them in QEMU x86_64 under <code>procnto-smp-instr</code>, reproduce a 1842.4µs deadline miss, and eliminate it with <code>PTHREAD_PRIO_INHERIT</code>.
         </p>
-      </section>
+      </header>
 
       <!-- STEP 1 -->
-      <article class="step-card" id="step-1" data-step-card="1">
-        <div class="step-header">
+      <section class="docs-step" id="step-1" data-step-card="1">
+        <div class="step-head">
           <div>
-            <div class="step-num">Step 01 · Host Environment</div>
-            <h2>Initialize QNX SDP 8.0 &amp; Verify Cross-Compiler Toolchain</h2>
+            <div class="step-kicker">STEP 01 · HOST ENVIRONMENT</div>
+            <h2>Initialize QNX SDP 8.0 and verify toolchain</h2>
           </div>
-          <button class="btn btn-sm step-toggle" data-toggle-step="1" type="button">Mark Complete</button>
+          <button class="tb-btn step-toggle" data-toggle-step="1" type="button">Mark done</button>
         </div>
-        <p style="color:var(--text-1);margin-top:0;">
-          Source your QNX SDP 8.0 environment script to expose <code>QNX_HOST</code>, <code>QNX_TARGET</code>, <code>qcc</code>, and <code>mkifs</code>. Confirm <code>gcc_ntox86_64</code> is listed by <code>qcc -V</code>.
+        <p>
+          Source the QNX SDP 8.0 environment script to expose <code>QNX_HOST</code>, <code>QNX_TARGET</code>, <code>qcc</code>, and <code>mkifs</code>. Confirm <code>gcc_ntox86_64</code> is listed by <code>qcc -V</code>.
         </p>
         <div class="code-block">
-          <div class="code-bar"><span>bash · Linux / macOS</span><button class="btn btn-sm copy-btn" type="button">Copy</button></div>
+          <div class="code-bar"><span>bash (Linux / macOS)</span><button class="tb-btn copy-btn" type="button">Copy</button></div>
           <pre>source ~/qnx800/qnxsdp-env.sh
 qcc -V
 which mkifs qemu-system-x86_64</pre>
         </div>
         <div class="code-block">
-          <div class="code-bar"><span>powershell · Windows</span><button class="btn btn-sm copy-btn" type="button">Copy</button></div>
+          <div class="code-bar"><span>cmd (Windows)</span><button class="tb-btn copy-btn" type="button">Copy</button></div>
           <pre>cmd /c "C:\qnx800\qnxsdp-env.bat &amp;&amp; qcc -V &amp;&amp; where mkifs"</pre>
         </div>
-      </article>
+      </section>
 
       <!-- STEP 2 -->
-      <article class="step-card" id="step-2" data-step-card="2">
-        <div class="step-header">
+      <section class="docs-step" id="step-2" data-step-card="2">
+        <div class="step-head">
           <div>
-            <div class="step-num">Step 02 · QNX 8.0 C11 Target</div>
-            <h2>Cross-Compile <code>sensor_broker</code> &amp; <code>motor_ctrl</code> via <code>qcc</code></h2>
+            <div class="step-kicker">STEP 02 · TARGET BINARIES</div>
+            <h2>Cross-compile <code>sensor_broker</code> and <code>motor_ctrl</code> with <code>qcc</code></h2>
           </div>
-          <button class="btn btn-sm step-toggle" data-toggle-step="2" type="button">Mark Complete</button>
+          <button class="tb-btn step-toggle" data-toggle-step="2" type="button">Mark done</button>
         </div>
-        <p style="color:var(--text-1);margin-top:0;">
-          <code>target-qnx8/src/sensor_broker.c</code> attaches a QNX channel via <code>name_attach()</code>, services synchronous <code>MsgReceive()</code>/<code>MsgReply()</code> calls at <code>SCHED_FIFO</code> prio 55, emits <code>MsgSendPulse()</code> notifications, and writes telemetry to <code>/pps/qnx/telemetry</code>. <code>motor_ctrl.c</code> runs a 1 kHz hard-RT control loop (prio <code>60f</code>) alongside a medium-prio diagnostic thread (<code>35f</code>) and a low-prio calibration thread (<code>15f</code>).
+        <p>
+          <code>target-qnx8/src/sensor_broker.c</code> attaches a channel with <code>name_attach()</code>, services synchronous <code>MsgReceive()</code>/<code>MsgReply()</code> requests at <code>SCHED_FIFO</code> priority <code>55f</code>, sends <code>MsgSendPulse()</code> notifications, and publishes state to <code>/pps/qnx/telemetry</code>. <code>motor_ctrl.c</code> runs a 1 kHz control thread (<code>60f</code>), a medium-priority diagnostic thread (<code>35f</code>), and a low-priority calibration thread (<code>15f</code>).
         </p>
         <div class="code-block">
-          <div class="code-bar"><span>Makefile · qcc -Vgcc_ntox86_64</span><button class="btn btn-sm copy-btn" type="button">Copy</button></div>
+          <div class="code-bar"><span>Makefile (qcc -Vgcc_ntox86_64)</span><button class="tb-btn copy-btn" type="button">Copy</button></div>
           <pre>cd target-qnx8
 make all
-# Builds build/sensor_broker and build/motor_ctrl linked against -lslog2</pre>
+# outputs build/sensor_broker and build/motor_ctrl linked with -lslog2</pre>
         </div>
         <div class="code-block">
-          <div class="code-bar"><span>CMake · qnx8-toolchain.cmake</span><button class="btn btn-sm copy-btn" type="button">Copy</button></div>
+          <div class="code-bar"><span>CMake (qnx8-toolchain.cmake)</span><button class="tb-btn copy-btn" type="button">Copy</button></div>
           <pre>cmake -B build -DCMAKE_TOOLCHAIN_FILE=qnx8-toolchain.cmake
 cmake --build build</pre>
         </div>
-      </article>
+      </section>
 
       <!-- STEP 3 -->
-      <article class="step-card" id="step-3" data-step-card="3">
-        <div class="step-header">
+      <section class="docs-step" id="step-3" data-step-card="3">
+        <div class="step-head">
           <div>
-            <div class="step-num">Step 03 · Image Filesystem</div>
-            <h2>Assemble Bootable Instrumented QNX 8.0 IFS (<code>mkifs</code>)</h2>
+            <div class="step-kicker">STEP 03 · IMAGE FILESYSTEM</div>
+            <h2>Assemble instrumented x86_64 IFS image with <code>mkifs</code></h2>
           </div>
-          <button class="btn btn-sm step-toggle" data-toggle-step="3" type="button">Mark Complete</button>
+          <button class="tb-btn step-toggle" data-toggle-step="3" type="button">Mark done</button>
         </div>
-        <p style="color:var(--text-1);margin-top:0;">
-          The buildfile <code>qnx8-qemu-x86_64.build</code> bundles <code>procnto-smp-instr</code> (required for kernel event tracing via <code>tracelogger</code>), <code>slogger2</code>, <code>pps</code>, <code>pidin</code>, <code>slog2info</code>, <code>traceprinter</code>, and both compiled target binaries.
+        <p>
+          <code>qnx8-qemu-x86_64.build</code> bundles <code>procnto-smp-instr</code> (required for kernel event tracing via <code>tracelogger</code>), <code>slogger2</code>, <code>pps</code>, <code>pidin</code>, <code>slog2info</code>, <code>traceprinter</code>, and both compiled binaries.
         </p>
         <div class="code-block">
-          <div class="code-bar"><span>mkifs · x86_64 multiboot IFS</span><button class="btn btn-sm copy-btn" type="button">Copy</button></div>
+          <div class="code-bar"><span>mkifs (x86_64 multiboot IFS)</span><button class="tb-btn copy-btn" type="button">Copy</button></div>
           <pre>cd target-qnx8
 mkifs -v qnx8-qemu-x86_64.build build/qnx8-pulse-x86_64.ifs
 ls -lh build/qnx8-pulse-x86_64.ifs</pre>
         </div>
-      </article>
+      </section>
 
       <!-- STEP 4 -->
-      <article class="step-card" id="step-4" data-step-card="4">
-        <div class="step-header">
+      <section class="docs-step" id="step-4" data-step-card="4">
+        <div class="step-head">
           <div>
-            <div class="step-num">Step 04 · Live QNX 8.0 Runtime</div>
-            <h2>Boot QEMU x86_64 &amp; Inspect Live <code>pidin</code> + <code>/pps/qnx/telemetry</code></h2>
+            <div class="step-kicker">STEP 04 · QEMU RUNTIME</div>
+            <h2>Boot QEMU x86_64 and verify <code>pidin</code> and <code>/pps/qnx/telemetry</code></h2>
           </div>
-          <button class="btn btn-sm step-toggle" data-toggle-step="4" type="button">Mark Complete</button>
+          <button class="tb-btn step-toggle" data-toggle-step="4" type="button">Mark done</button>
         </div>
-        <p style="color:var(--text-1);margin-top:0;">
-          Boot the IFS image with 2 vCPUs and serial stdio, then verify <code>sensor_broker</code> is live in <code>RECEIVE</code> state at <code>55f</code>.
+        <p>
+          Boot the IFS with 2 vCPUs and serial stdio, then verify <code>sensor_broker</code> is idle in <code>RECEIVE</code> state at <code>55f</code>.
         </p>
         <div class="code-block">
-          <div class="code-bar"><span>host · Launch QEMU x86_64</span><button class="btn btn-sm copy-btn" type="button">Copy</button></div>
+          <div class="code-bar"><span>host (qemu-system-x86_64)</span><button class="tb-btn copy-btn" type="button">Copy</button></div>
           <pre>qemu-system-x86_64 -machine q35 -cpu max -smp 2 -m 512 \
   -kernel target-qnx8/build/qnx8-pulse-x86_64.ifs -nographic -serial mon:stdio</pre>
         </div>
         <div class="code-block">
-          <div class="code-bar"><span>qnx8 target ksh · Verify Services</span><button class="btn btn-sm copy-btn" type="button">Copy</button></div>
+          <div class="code-bar"><span>target ksh (verify services)</span><button class="tb-btn copy-btn" type="button">Copy</button></div>
           <pre>pidin -F "%a %b %p %J %S %h"
 cat /pps/qnx/telemetry
 slog2info | tail -n 10</pre>
         </div>
-      </article>
+      </section>
 
       <!-- STEP 5 -->
-      <article class="step-card" id="step-5" data-step-card="5">
-        <div class="step-header">
+      <section class="docs-step" id="step-5" data-step-card="5">
+        <div class="step-head">
           <div>
-            <div class="step-num">Step 05 · Fault Injection</div>
-            <h2>Reproduce Priority Inversion &amp; Capture Target Diagnostics</h2>
+            <div class="step-kicker">STEP 05 · FAULT REPRODUCTION</div>
+            <h2>Trigger priority inversion and capture target diagnostics</h2>
           </div>
-          <button class="btn btn-sm step-toggle" data-toggle-step="5" type="button">Mark Complete</button>
+          <button class="tb-btn step-toggle" data-toggle-step="5" type="button">Mark done</button>
         </div>
-        <p style="color:var(--text-1);margin-top:0;">
-          Launch <code>motor_ctrl --inject-inversion</code> (which configures <code>g_calib_mtx</code> with <code>PTHREAD_PRIO_NONE</code>) and run <code>capture-diag.sh</code> to record synchronized <code>tracelogger</code>/<code>traceprinter</code>, <code>pidin</code>, <code>slog2info</code>, and <code>/pps</code> artifacts.
+        <p>
+          Run <code>motor_ctrl --inject-inversion</code> (initializes <code>g_calib_mtx</code> with <code>PTHREAD_PRIO_NONE</code>) and collect synchronized <code>tracelogger</code>/<code>traceprinter</code>, <code>pidin</code>, <code>slog2info</code>, and <code>/pps</code> output via <code>capture-diag.sh</code>.
         </p>
         <div class="code-block">
-          <div class="code-bar"><span>qnx8 target ksh · Inject &amp; Capture</span><button class="btn btn-sm copy-btn" type="button">Copy</button></div>
+          <div class="code-bar"><span>target ksh (inject and capture)</span><button class="tb-btn copy-btn" type="button">Copy</button></div>
           <pre>/proc/boot/motor_ctrl --inject-inversion --iterations 200 &amp;
 /proc/boot/capture-diag.sh /tmp/capture-inversion 3</pre>
         </div>
-      </article>
+      </section>
 
       <!-- STEP 6 -->
-      <article class="step-card" id="step-6" data-step-card="6">
-        <div class="step-header">
+      <section class="docs-step" id="step-6" data-step-card="6">
+        <div class="step-head">
           <div>
-            <div class="step-num">Step 06 · Automated Root-Cause Analysis</div>
-            <h2>Audit Capture with <code>qnx-pulse</code> CLI &amp; Oscilloscope Workbench</h2>
+            <div class="step-kicker">STEP 06 · HOST ANALYSIS</div>
+            <h2>Analyze capture with <code>qnx-pulse</code> CLI</h2>
           </div>
-          <button class="btn btn-sm step-toggle" data-toggle-step="6" type="button">Mark Complete</button>
+          <button class="tb-btn step-toggle" data-toggle-step="6" type="button">Mark done</button>
         </div>
-        <p style="color:var(--text-1);margin-top:0;">
-          Run the zero-dependency QNX Pulse Studio CLI on your capture folder (or our bundled <code>samples/brake-ecu-inversion</code>). The auditor detects the exact 1,380 us inversion window, 1,842.4 us deadline violation, and returns CI exit code <code>2</code>.
+        <p>
+          Run the host CLI against your capture directory (or the bundled <code>samples/brake-ecu-inversion</code> fixture). The analyzer flags the 1390µs inversion window, the 1842.4µs deadline overrun, and exits with status <code>2</code> for CI gating.
         </p>
         <div class="code-block">
-          <div class="code-bar"><span>host · qnx-pulse CLI Audit (Fails CI with Exit 2)</span><button class="btn btn-sm copy-btn" type="button">Copy</button></div>
+          <div class="code-bar"><span>host (qnx-pulse CLI, exits with status 2)</span><button class="tb-btn copy-btn" type="button">Copy</button></div>
           <pre>node cli/qnx-pulse.mjs analyze samples/brake-ecu-inversion --deadline 500
 node cli/qnx-pulse.mjs analyze samples/brake-ecu-inversion --deadline 500 --format markdown --out audit-fail.md</pre>
         </div>
-        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
-          <a href="./index.html?preset=brake-ecu-inversion" class="btn btn-sm btn-primary">Inspect Inversion Band in Live Workbench &rarr;</a>
+        <div class="docs-links">
+          <a href="./index.html?preset=brake-ecu-inversion" class="tb-btn tb-btn-primary">Open brake-ecu-inversion.cap in Workbench</a>
         </div>
-      </article>
+      </section>
 
       <!-- STEP 7 -->
-      <article class="step-card" id="step-7" data-step-card="7">
-        <div class="step-header">
+      <section class="docs-step" id="step-7" data-step-card="7">
+        <div class="step-head">
           <div>
-            <div class="step-num">Step 07 · Root-Cause Fix &amp; CI Gate</div>
-            <h2>Apply <code>PTHREAD_PRIO_INHERIT</code> &amp; Verify 93.9% Jitter Reduction</h2>
+            <div class="step-kicker">STEP 07 · FIX AND VERIFICATION</div>
+            <h2>Switch mutex protocol to <code>PTHREAD_PRIO_INHERIT</code></h2>
           </div>
-          <button class="btn btn-sm step-toggle" data-toggle-step="7" type="button">Mark Complete</button>
+          <button class="tb-btn step-toggle" data-toggle-step="7" type="button">Mark done</button>
         </div>
-        <p style="color:var(--text-1);margin-top:0;">
-          Enabling <code>PTHREAD_PRIO_INHERIT</code> tells the QNX Neutrino 8.0 microkernel to instantaneously boost <code>calib_worker</code> from <code>15f</code> to <code>60f</code> whenever <code>actuator_1khz (60f)</code> blocks on <code>g_calib_mtx</code>, preventing medium-priority <code>diag_streamer (35f)</code> from ever preempting the mutex holder.
+        <p>
+          Setting <code>PTHREAD_PRIO_INHERIT</code> instructs <code>procnto-smp-instr</code> to boost <code>calib_worker</code> from <code>15f</code> to <code>60f</code> while <code>actuator_1khz</code> (<code>60f</code>) waits on <code>g_calib_mtx</code>. Medium-priority <code>diag_streamer</code> (<code>35f</code>) cannot preempt the mutex holder, holding worst-case loop jitter to <code>112.6µs</code>.
         </p>
 
-        <!-- Interactive Before / After Code Diff -->
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px;">
-          <strong class="mono" style="font-size:12px;color:var(--cyan);">Interactive Before / After Diff · target-qnx8/src/motor_ctrl.c</strong>
-          <div class="tab-bar">
-            <button class="tab-btn active diff-mode-btn" data-diff="split" type="button">Side-by-Side Diff</button>
-            <button class="tab-btn diff-mode-btn" data-diff="before" type="button">Before (PRIO_NONE)</button>
-            <button class="tab-btn diff-mode-btn" data-diff="after" type="button">After (PRIO_INHERIT)</button>
+        <div class="diff-toolbar">
+          <span class="diff-file">target-qnx8/src/motor_ctrl.c</span>
+          <div class="diff-switch" role="group" aria-label="Diff display mode">
+            <button class="diff-mode-btn active" data-diff="split" type="button">Split</button>
+            <button class="diff-mode-btn" data-diff="before" type="button">Before</button>
+            <button class="diff-mode-btn" data-diff="after" type="button">After</button>
           </div>
         </div>
 
         <div id="diffContainer" class="diff-grid">
           <div id="diffBefore" class="diff-box bad">
             <div class="code-bar">
-              <span style="color:#ff7b7b;">BEFORE · --inject-inversion (EXIT 2)</span>
-              <span class="badge badge-fail">1,842.4 us MAX JITTER</span>
+              <span class="col-bad">BEFORE · --inject-inversion (exit 2)</span>
+              <span class="col-bad">max 1842.4µs</span>
             </div>
             <pre>pthread_mutexattr_t mattr;
 pthread_mutexattr_init(&amp;mattr);
-<span class="diff-line-del">- pthread_mutexattr_setprotocol(&amp;mattr, PTHREAD_PRIO_NONE);</span>
-pthread_mutex_init(&amp;g_calib_mtx, &amp;mattr);
+<span class="diff-line-del">- pthread_mutexattr_setprotocol(&amp;mattr, PTHREAD_PRIO_NONE);</span>pthread_mutex_init(&amp;g_calib_mtx, &amp;mattr);
 pthread_mutexattr_destroy(&amp;mattr);</pre>
           </div>
 
           <div id="diffAfter" class="diff-box good">
             <div class="code-bar">
-              <span style="color:#34d399;">AFTER · --fixed-pi (EXIT 0)</span>
-              <span class="badge badge-pass">112.6 us MAX JITTER</span>
+              <span class="col-ok">AFTER · --fixed-pi (exit 0)</span>
+              <span class="col-ok">max 112.6µs</span>
             </div>
             <pre>pthread_mutexattr_t mattr;
 pthread_mutexattr_init(&amp;mattr);
-<span class="diff-line-add">+ pthread_mutexattr_setprotocol(&amp;mattr, PTHREAD_PRIO_INHERIT);</span>
-pthread_mutex_init(&amp;g_calib_mtx, &amp;mattr);
+<span class="diff-line-add">+ pthread_mutexattr_setprotocol(&amp;mattr, PTHREAD_PRIO_INHERIT);</span>pthread_mutex_init(&amp;g_calib_mtx, &amp;mattr);
 pthread_mutexattr_destroy(&amp;mattr);</pre>
           </div>
         </div>
 
-        <div class="metric-compare">
-          <div class="kpi-card">
-            <span class="kpi-label">Priority Inversions</span>
-            <span class="kpi-value val-emerald">1 &rarr; 0</span>
-            <span class="kpi-sub">-100% eliminated</span>
-          </div>
-          <div class="kpi-card">
-            <span class="kpi-label">Max Loop Jitter</span>
-            <span class="kpi-value val-emerald">112.6 us</span>
-            <span class="kpi-sub">Down from 1,842.4 us (-93.9%)</span>
-          </div>
-          <div class="kpi-card">
-            <span class="kpi-label">Deadline Violations</span>
-            <span class="kpi-value val-emerald">2 &rarr; 0</span>
-            <span class="kpi-sub">Well inside 500 us budget</span>
-          </div>
-          <div class="kpi-card">
-            <span class="kpi-label">CI Pipeline Gate</span>
-            <span class="kpi-value val-cyan">EXIT 0</span>
-            <span class="kpi-sub">RT Score 100 / 100</span>
-          </div>
+        <div class="docs-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>PTHREAD_PRIO_NONE</th>
+                <th>PTHREAD_PRIO_INHERIT</th>
+                <th>Delta</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="col-nowrap">Priority inversions</td>
+                <td class="col-bad">1 (1390µs stall)</td>
+                <td class="col-ok">0</td>
+                <td class="col-ok">-100%</td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">Max control-loop jitter</td>
+                <td class="col-bad">1842.4µs</td>
+                <td class="col-ok">112.6µs</td>
+                <td class="col-ok">-93.9%</td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">Deadline misses (&gt;500µs)</td>
+                <td class="col-bad">2 / 200 ticks</td>
+                <td class="col-ok">0 / 200 ticks</td>
+                <td class="col-ok">-2</td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">CLI exit code</td>
+                <td class="col-bad">exit 2 (FAIL)</td>
+                <td class="col-ok">exit 0 (PASS)</td>
+                <td class="col-ok">CI gate green</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        <div class="code-block" style="margin-top:14px;">
-          <div class="code-bar"><span>host · Verify Fixed Capture &amp; Gate CI/CD</span><button class="btn btn-sm copy-btn" type="button">Copy</button></div>
+        <div class="code-block">
+          <div class="code-bar"><span>host (verify fixed capture, exits with status 0)</span><button class="tb-btn copy-btn" type="button">Copy</button></div>
           <pre>node cli/qnx-pulse.mjs analyze samples/surgical-arm-clean --deadline 500
-# Verdict: PASS (EXIT 0) | RT Score: 100/100 | max_jitter=112.6us</pre>
+# status=PASS exit=0 max_jitter=112.6us inversions=0</pre>
         </div>
 
-        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
-          <a href="./index.html?preset=surgical-arm-clean" class="btn btn-primary">Verify Clean PI_BOOST Trace in Workbench &rarr;</a>
-          <a href="./index.html?preset=brake-ecu-inversion" class="btn">Compare Against Broken Trace</a>
+        <div class="docs-links">
+          <a href="./index.html?preset=surgical-arm-clean" class="tb-btn tb-btn-primary">Open surgical-arm-clean.cap in Workbench</a>
+          <a href="./index.html?preset=brake-ecu-inversion" class="tb-btn">Compare brake-ecu-inversion.cap</a>
         </div>
-      </article>
+      </section>
     </main>
   </div>
-
-  <footer class="footer">
-    <span>QNX Pulse Studio · 7-Step Interactive QNX Neutrino 8.0 Codelab (Matches CODELAB.md)</span>
-    <span><a href="./index.html">Back to Telemetry Workbench</a></span>
-  </footer>
 
   <script type="module" src="./codelab.js"></script>
 </body>
