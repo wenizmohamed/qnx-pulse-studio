@@ -1,0 +1,8 @@
+PID   TID   PROCESS         PRIO  STATE     BLOCKED   THREAD_NAME
+5204  3     motor_ctrl      60f   RUNNING   -         actuator_1khz
+5201  1     sensor_broker   55f   RECEIVE   1         ipc_broker
+5198  1     ethercat_drv    52f   RECEIVE   1         ecat_master
+5204  2     motor_ctrl      35f   NANOSLEEP -         diag_streamer
+5204  1     motor_ctrl      15f   NANOSLEEP -         calib_worker
+5010  1     slogger2        21r   RECEIVE   1         slogger2_main
+5012  1     pps             21r   RECEIVE   1         pps_server

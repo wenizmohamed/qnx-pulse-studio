@@ -1,0 +1,15 @@
+@telemetry
+seq:n:75
+brake_pressure_kpa:n:4238
+imu_yaw_mdeg:n:14
+temp_mC:n:38400
+ipc_service_us:n:23.40
+status:s:NOMINAL_RT
+
+@actuator
+mode:s:FIXED_PI
+mutex_protocol:s:PTHREAD_PRIO_INHERIT
+max_jitter_us:n:112.6
+deadline_budget_us:n:500.0
+inversion_detected:b:false
+active_faults:json:[]

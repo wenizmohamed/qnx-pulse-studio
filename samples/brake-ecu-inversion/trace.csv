@@ -1,0 +1,20 @@
+time_us,cpu,class,event,pid,tid,prio,target_pid,target_tid,detail
+0,0,THREAD,THRUNNING,4102,1,15,-,-,calib_worker acquires g_calib_mtx (PTHREAD_PRIO_NONE)
+45,0,THREAD,THRUNNING,4102,3,60,-,-,actuator_1khz wakes on 1kHz monotonic timer
+60,0,COMM,MSG_SENDV,4102,3,60,4098,1,MSG_TYPE_READ_SENSOR seq=75
+65,1,THREAD,THRUNNING,4098,1,55,-,-,sensor_broker receives READ_SENSOR
+80,1,COMM,MSG_SENDV,4098,1,55,4095,1,CAN_READ_PRESSURE frame=0x214
+90,1,THREAD,THRUNNING,4095,1,50,-,-,can_bus_drv reads hydraulic sensor
+135,1,COMM,MSG_REPLYV,4095,1,50,4098,1,brake_pressure_kpa=4340
+150,1,COMM,MSG_REPLYV,4098,1,55,4102,3,SENSOR_VALID status=0x1
+165,1,COMM,MSG_PULSE,4098,1,55,4012,1,PULSE_CODE_SENSOR_READY seq=75
+175,0,THREAD,THRUNNING,4102,3,60,-,-,actuator_1khz attempts pthread_mutex_lock(g_calib_mtx)
+190,0,SYNC,THMUTEX,4102,3,60,4102,1,Blocked on g_calib_mtx held by calib_worker(4102:1)
+205,0,THREAD,THREADY,4102,1,15,-,-,calib_worker preempted before unlocking g_calib_mtx
+210,0,THREAD,THRUNNING,4102,2,35,-,-,diag_streamer CPU compression burst preempts prio 15
+1590,0,THREAD,THNANOSLEEP,4102,2,35,-,-,diag_streamer finishes burst and sleeps 3ms
+1600,0,THREAD,THRUNNING,4102,1,15,-,-,calib_worker resumes after 1395us starvation
+1690,0,SYNC,MUTEX_UNLOCK,4102,1,15,-,-,calib_worker releases g_calib_mtx
+1705,0,THREAD,THRUNNING,4102,3,60,-,-,actuator_1khz unblocked jitter_us=1842.4
+1890,0,THREAD,THNANOSLEEP,4102,3,60,-,-,actuator_1khz sleeps for next 1kHz tick
+1900,1,THREAD,THRECEIVE,4098,1,55,-,-,sensor_broker idle in MsgReceive()

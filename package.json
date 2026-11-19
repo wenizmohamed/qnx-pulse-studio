@@ -1,0 +1,36 @@
+{
+  "name": "qnx-pulse-studio",
+  "version": "1.0.0",
+  "description": "QNX Neutrino 8.0 Real-Time IPC Trace Analyzer, Priority-Inversion Auditor, Host CLI, Target C Reference & Interactive 7-Step Codelab",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "qnx",
+    "qnx8",
+    "neutrino",
+    "rtos",
+    "slog2",
+    "pidin",
+    "tracelogger",
+    "traceprinter",
+    "pps",
+    "priority-inversion",
+    "ipc",
+    "real-time",
+    "codelab"
+  ],
+  "bin": {
+    "qnx-pulse": "./cli/qnx-pulse.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/analyzer.test.js",
+    "cli": "node cli/qnx-pulse.mjs",
+    "audit:ecu": "node cli/qnx-pulse.mjs analyze samples/brake-ecu-inversion --deadline 500",
+    "audit:clean": "node cli/qnx-pulse.mjs analyze samples/surgical-arm-clean --deadline 500",
+    "audit:qemu": "node cli/qnx-pulse.mjs analyze samples/qemu-starter --deadline 500",
+    "dev": "node scripts/serve.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

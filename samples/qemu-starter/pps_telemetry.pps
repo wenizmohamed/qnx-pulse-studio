@@ -1,0 +1,13 @@
+@telemetry
+seq:n:50
+brake_pressure_kpa:n:4219
+imu_yaw_mdeg:n:8
+temp_mC:n:35800
+ipc_service_us:n:543.00
+status:s:DEGRADED_LATENCY
+
+@qemu_env
+image:s:qnx8-pulse-x86_64.ifs
+kernel:s:procnto-smp-instr
+vcpus:n:2
+memory_mb:n:512

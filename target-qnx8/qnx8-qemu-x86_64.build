@@ -1,0 +1,69 @@
+# QNX Neutrino 8.0 Image Filesystem (IFS) Buildfile for QEMU x86_64
+# Assemble with: mkifs -v qnx8-qemu-x86_64.build build/qnx8-pulse-x86_64.ifs
+
+[virtual=x86_64,multiboot] boot = {
+    startup-x86 -D8250..115200 -v
+    PATH=/proc/boot:/bin:/usr/bin LD_LIBRARY_PATH=/proc/boot:/lib:/usr/lib procnto-smp-instr -v
+}
+
+[+script] startup-script = {
+    procmgr_symlink ../../proc/boot/libc.so.6 /usr/lib/ldqnx-64.so.2
+
+    display_msg "======================================================"
+    display_msg "  QNX Neutrino 8.0 - QNX Pulse Studio Target Image"
+    display_msg "  Kernel: procnto-smp-instr (Instrumented RT Trace)"
+    display_msg "======================================================"
+
+    # Core logging & PPS object broker
+    slogger2 -s 2048k
+    waitfor /dev/slog2 4
+
+    pps -m /pps -p /tmp/pps_persist
+    waitfor /pps 4
+
+    # Serial console driver
+    devc-ser8250 -e -b115200 &
+    waitfor /dev/ser1 4
+    reopen /dev/ser1
+
+    # Start QNX Pulse Sensor Broker at SCHED_FIFO prio 55
+    /proc/boot/sensor_broker --prio 55 &
+    waitfor /dev/name/local/qnx/pulse/sensor_broker 4
+
+    display_msg "[QNX Pulse] Ready. Run:"
+    display_msg "  /proc/boot/motor_ctrl --inject-inversion"
+    display_msg "  /proc/boot/motor_ctrl --fixed-pi"
+    display_msg "  /proc/boot/capture-diag.sh /tmp/capture"
+
+    [+session] ksh &
+}
+
+[type=link] /bin/sh=/proc/boot/ksh
+[type=link] /dev/console=/dev/ser1
+[type=link] /tmp=/dev/shmem
+
+# Core QNX 8.0 shared libraries
+libc.so
+libm.so
+libslog2.so
+libpps.so
+
+[data=copy]
+# QNX 8.0 runtime utilities & trace tooling
+ksh
+pidin
+slog2info
+tracelogger
+traceprinter
+slogger2
+pps
+devc-ser8250
+cat
+ls
+mkdir
+sleep
+
+# QNX Pulse Studio target binaries & capture script
+sensor_broker=build/sensor_broker
+motor_ctrl=build/motor_ctrl
+capture-diag.sh=scripts/capture-diag.sh

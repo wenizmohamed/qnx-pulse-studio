@@ -1,0 +1,12 @@
+time_us,cpu,class,event,pid,tid,prio,target_pid,target_tid,detail
+0,0,THREAD,THRUNNING,1024,3,60,-,-,actuator_1khz wakes in QEMU x86_64
+25,0,COMM,MSG_SENDV,1024,3,60,1020,1,MSG_TYPE_READ_SENSOR seq=50
+32,1,THREAD,THRUNNING,1020,1,55,-,-,sensor_broker handles READ_SENSOR
+95,1,COMM,MSG_SENDV,1020,1,55,1004,1,Synchronous slog2 buffer flush during hot path
+105,1,THREAD,THRUNNING,1004,1,21,-,-,slogger2 flushing ring pages under load
+545,1,COMM,MSG_REPLYV,1004,1,21,1020,1,slogger2 flush ack
+575,1,COMM,MSG_REPLYV,1020,1,55,1024,3,SENSOR_VALID delayed reply
+590,1,COMM,MSG_PULSE,1020,1,55,1006,1,PULSE_CODE_SENSOR_READY seq=50
+600,0,THREAD,THRUNNING,1024,3,60,-,-,actuator_1khz resumes jitter_us=618.5
+645,0,THREAD,THNANOSLEEP,1024,3,60,-,-,actuator_1khz sleeps for next 1kHz tick
+660,1,THREAD,THRECEIVE,1020,1,55,-,-,sensor_broker idle in MsgReceive()

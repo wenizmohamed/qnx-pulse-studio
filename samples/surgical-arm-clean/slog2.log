@@ -1,0 +1,7 @@
+Nov 19 11:22:10.005  sensor_broker.5201  1000  5  sensor_broker online pid=5201 chid=1 prio=55f cycles_per_sec=2400000000
+Nov 19 11:22:10.030  motor_ctrl.5204     2000  5  motor_ctrl starting pid=5204 mode=--fixed-pi mutex_protocol=PTHREAD_PRIO_INHERIT
+Nov 19 11:22:10.280  motor_ctrl.5204     2005  5  RT_TICK iter=25 jitter_us=74.1 brake_kpa=4210 pi=PRIO_INHERIT
+Nov 19 11:22:10.530  motor_ctrl.5204     2005  5  RT_TICK iter=50 jitter_us=89.5 brake_kpa=4224 pi=PRIO_INHERIT
+Nov 19 11:22:10.780  motor_ctrl.5204     2005  5  RT_TICK iter=75 jitter_us=112.6 brake_kpa=4238 pi=PRIO_INHERIT
+Nov 19 11:22:11.030  motor_ctrl.5204     2005  5  RT_TICK iter=100 jitter_us=81.3 brake_kpa=4240 pi=PRIO_INHERIT
+Nov 19 11:22:11.290  motor_ctrl.5204     2099  5  motor_ctrl summary mode=FIXED_PI max_jitter_us=112.6 violations=0/200

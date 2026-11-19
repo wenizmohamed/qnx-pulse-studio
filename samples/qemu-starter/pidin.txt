@@ -1,0 +1,8 @@
+PID   TID   PROCESS         PRIO  STATE     BLOCKED   THREAD_NAME
+1024  3     motor_ctrl      60f   REPLY     1020:1    actuator_1khz
+1020  1     sensor_broker   55f   SEND      1004:1    ipc_broker
+1004  1     slogger2        21r   RUNNING   -         slogger2_main
+1006  1     pps             21r   RECEIVE   1         pps_server
+1024  2     motor_ctrl      35f   NANOSLEEP -         diag_streamer
+1024  1     motor_ctrl      15f   NANOSLEEP -         calib_worker
+1002  1     devc-ser8250    24r   RECEIVE   1         ser8250_isr

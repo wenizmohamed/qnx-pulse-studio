@@ -1,0 +1,17 @@
+time_us,cpu,class,event,pid,tid,prio,target_pid,target_tid,detail
+0,0,THREAD,THRUNNING,5204,1,15,-,-,calib_worker acquires g_calib_mtx (PTHREAD_PRIO_INHERIT)
+40,0,THREAD,THRUNNING,5204,3,60,-,-,actuator_1khz wakes on 1kHz monotonic timer
+52,0,COMM,MSG_SENDV,5204,3,60,5201,1,MSG_TYPE_READ_SENSOR seq=75
+58,1,THREAD,THRUNNING,5201,1,55,-,-,sensor_broker handles READ_SENSOR
+75,1,COMM,MSG_REPLYV,5201,1,55,5204,3,SENSOR_VALID status=0x1
+82,1,COMM,MSG_PULSE,5201,1,55,5012,1,PULSE_CODE_SENSOR_READY seq=75
+85,0,THREAD,THRUNNING,5204,3,60,-,-,actuator_1khz calls pthread_mutex_lock(g_calib_mtx)
+92,0,SYNC,THMUTEX,5204,3,60,5204,1,Contention on g_calib_mtx -> triggers QNX PI boost
+94,0,THREAD,PI_BOOST,5204,1,60,-,-,QNX kernel boosts calib_worker prio 15f -> 60f
+110,0,THREAD,THREADY,5204,2,35,-,-,diag_streamer ready but CANNOT preempt boosted prio 60f
+142,0,SYNC,MUTEX_UNLOCK,5204,1,60,-,-,calib_worker unlocks g_calib_mtx and restores prio 15f
+148,0,THREAD,THRUNNING,5204,3,60,-,-,actuator_1khz completes control frame jitter_us=112.6
+180,0,THREAD,THNANOSLEEP,5204,3,60,-,-,actuator_1khz sleeps for next 1kHz tick
+185,0,THREAD,THRUNNING,5204,2,35,-,-,diag_streamer runs safely in slack window
+520,0,THREAD,THNANOSLEEP,5204,2,35,-,-,diag_streamer completes burst
+530,1,THREAD,THRECEIVE,5201,1,55,-,-,sensor_broker waiting in MsgReceive()

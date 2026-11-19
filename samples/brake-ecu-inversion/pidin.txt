@@ -1,0 +1,8 @@
+PID   TID   PROCESS         PRIO  STATE     BLOCKED   THREAD_NAME
+4102  3     motor_ctrl      60f   MUTEX     4102:1    actuator_1khz
+4098  1     sensor_broker   55f   REPLY     4095:1    ipc_broker
+4095  1     can_bus_drv     50f   RUNNING   -         can0_rx_tx
+4102  2     motor_ctrl      35f   RUNNING   -         diag_streamer
+4102  1     motor_ctrl      15f   READY     -         calib_worker
+4010  1     slogger2        21r   RECEIVE   1         slogger2_main
+4012  1     pps             21r   RECEIVE   1         pps_server

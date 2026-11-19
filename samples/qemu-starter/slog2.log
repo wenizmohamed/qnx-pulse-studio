@@ -1,0 +1,7 @@
+Nov 19 11:25:01.002  slogger2.1004       0001  5  QNX Neutrino 8.0.0 x86_64 SMP instrumented kernel booted in QEMU
+Nov 19 11:25:01.115  sensor_broker.1020  1000  5  sensor_broker online pid=1020 chid=1 prio=55f cycles_per_sec=2000000000
+Nov 19 11:25:01.210  motor_ctrl.1024     2000  5  motor_ctrl starting pid=1024 mode=--fixed-pi mutex_protocol=PTHREAD_PRIO_INHERIT
+Nov 19 11:25:01.490  motor_ctrl.1024     2005  5  RT_TICK iter=25 jitter_us=142.0 brake_kpa=4205 pi=PRIO_INHERIT
+Nov 19 11:25:01.760  sensor_broker.1020  1003  3  PPS write contention on /pps/qnx/telemetry delayed MsgReply
+Nov 19 11:25:01.761  motor_ctrl.1024     2010  2  DEADLINE_VIOLATION iter=50 jitter_us=618.5 budget_us=500.0 pi=PRIO_INHERIT
+Nov 19 11:25:02.020  motor_ctrl.1024     2005  5  RT_TICK iter=75 jitter_us=158.2 brake_kpa=4219 pi=PRIO_INHERIT

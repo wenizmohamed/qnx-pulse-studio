@@ -1,0 +1,9 @@
+Nov 19 11:20:00.010  sensor_broker.4098  1000  5  sensor_broker online pid=4098 chid=1 prio=55f cycles_per_sec=2400000000
+Nov 19 11:20:00.045  motor_ctrl.4102     2000  5  motor_ctrl starting pid=4102 mode=--inject-inversion mutex_protocol=PTHREAD_PRIO_NONE
+Nov 19 11:20:00.120  motor_ctrl.4102     2005  5  RT_TICK iter=25 jitter_us=98.4 brake_kpa=4285 pi=PRIO_NONE
+Nov 19 11:20:00.370  motor_ctrl.4102     2005  5  RT_TICK iter=50 jitter_us=114.2 brake_kpa=4310 pi=PRIO_NONE
+Nov 19 11:20:00.512  can_bus_drv.4095    3101  3  CAN0 frame arbitration retry count=2 bus_load=74%
+Nov 19 11:20:00.624  motor_ctrl.4102     2010  2  DEADLINE_VIOLATION iter=75 jitter_us=1842.4 budget_us=500.0 pi=PRIO_NONE
+Nov 19 11:20:00.625  sensor_broker.4098  1005  3  High IPC reply latency detected pid=4102 tid=3 ipc_us=612.8
+Nov 19 11:20:00.880  motor_ctrl.4102     2010  2  DEADLINE_VIOLATION iter=100 jitter_us=1615.0 budget_us=500.0 pi=PRIO_NONE
+Nov 19 11:20:01.050  motor_ctrl.4102     2099  2  motor_ctrl summary mode=INJECT_INVERSION max_jitter_us=1842.4 violations=2/200
