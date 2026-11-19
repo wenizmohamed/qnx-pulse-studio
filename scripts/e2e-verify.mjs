@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 /**
  * QNX Pulse Studio - Headless Playwright E2E Verification & Screenshot Capture
- * Verifies 0 console errors, 0 page errors, 0px horizontal overflow on desktop (1440) & mobile (390)
- * for both `/` and `/codelab.html`, and captures 4 crisp PNGs into `assets/`.
- *
- * Run with:
- *   set NODE_PATH=C:\Users\user\.claude\mostaql\torn-zone\zone-devvit\node_modules
- *   node scripts/e2e-verify.mjs
+ * Verifies 0 console errors, 0 page errors, 0px horizontal overflow on desktop (1440) & mobile (390),
+ * all 4 Google Fonts loaded, live Scrub button, Compare Before/After PI Fix toggle, inspector tabs,
+ * and Codelab checklist, and captures 4 crisp PNGs into `assets/`.
  */
 
 import http from 'node:http';
@@ -23,6 +20,8 @@ const ROOT = path.resolve(__dirname, '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const ASSETS_DIR = path.join(ROOT, 'assets');
 fs.mkdirSync(ASSETS_DIR, { recursive: true });
+
+const REQUIRED_FONTS = ['Space Grotesk', 'Instrument Serif', 'Instrument Sans', 'JetBrains Mono'];
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -62,6 +61,24 @@ async function checkOverflow(page) {
     clientWidth: document.documentElement.clientWidth,
     overflowPx: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth)
   }));
+}
+
+async function checkFontsLoaded(page) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+  return page.evaluate((families) => {
+    const loaded = new Set();
+    for (const f of document.fonts) {
+      if (f.status === 'loaded') {
+        loaded.add(f.family.replace(/^["']|["']$/g, ''));
+      }
+    }
+    return {
+      loadedFamilies: Array.from(loaded),
+      missingFamilies: families.filter((fam) => !loaded.has(fam))
+    };
+  }, REQUIRED_FONTS);
 }
 
 function findChromiumExecutable() {
@@ -106,14 +123,19 @@ async function main() {
     // 1. Desktop `/` verification
     await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#timelineSvg rect');
+    results.homeFonts = await checkFontsLoaded(page);
+    if (results.homeFonts.missingFamilies.length > 0) {
+      throw new Error(`Missing Google Fonts on /: ${results.homeFonts.missingFamilies.join(', ')}`);
+    }
 
     results.homeDesktopOverflow = await checkOverflow(page);
 
-    // Verify capture selector switch (clean -> inversion)
-    await page.selectOption('#captureSelect', 'surgical-arm-clean');
+    // Verify 1-click Compare Before vs After PI Fix toggle
+    await page.click('#btnComparePi');
     const cleanBadge = await page.textContent('#verdictBadge');
-    if (!cleanBadge.toLowerCase().includes('exit 0')) {
-      throw new Error(`Expected exit 0 on surgical-arm-clean, got: ${cleanBadge}`);
+    const cleanJitter = await page.textContent('#numMaxJitter');
+    if (!cleanBadge.toLowerCase().includes('exit 0') || !cleanJitter.includes('112.6')) {
+      throw new Error(`Compare PI Fix failed: badge=${cleanBadge}, jitter=${cleanJitter}`);
     }
 
     // Verify deadline budget edit updates status
@@ -127,23 +149,35 @@ async function main() {
     await page.dispatchEvent('#deadlineInput', 'input');
     await page.evaluate(() => document.activeElement?.blur());
 
-    // Switch back to brake-ecu-inversion
-    await page.selectOption('#captureSelect', 'brake-ecu-inversion');
+    // Toggle back to brake-ecu-inversion via Compare button
+    await page.click('#btnComparePi');
     const failBadge = await page.textContent('#verdictBadge');
-    if (!failBadge.toLowerCase().includes('exit 2')) {
-      throw new Error(`Expected exit 2 on brake-ecu-inversion, got: ${failBadge}`);
+    const failJitter = await page.textContent('#numMaxJitter');
+    if (!failBadge.toLowerCase().includes('exit 2') || !failJitter.includes('1842.4')) {
+      throw new Error(`Expected exit 2 / 1842.4us after toggling back, got: ${failBadge} / ${failJitter}`);
     }
-    results.presetSwitchOk = true;
+    results.comparePiToggleOk = true;
 
-    // Click inversion band to populate statusbar readout
-    const firstHit = page.locator('#timelineSvg .svg-hit').first();
-    await firstHit.dispatchEvent('click');
+    // Verify live Scrub button advances cursor and updates readout
+    const initialScrub = await page.textContent('#scrubTimeReadout');
+    await page.click('#btnScrubPlay');
+    await page.waitForTimeout(320);
+    await page.click('#btnScrubPlay');
+    const movedScrub = await page.textContent('#scrubTimeReadout');
+    if (movedScrub === initialScrub) {
+      throw new Error(`Scrub playback did not advance cursor: stayed at ${movedScrub}`);
+    }
+    results.scrubOk = { from: initialScrub, to: movedScrub };
 
-    // Screenshot 1: Full Workbench with Trace Timeline + Findings Table (1440x900)
+    // Position scrub cursor inside inversion window (890us) for crisp screenshot framing
+    await page.fill('#scrubSlider', '890');
+    await page.dispatchEvent('#scrubSlider', 'input');
+
+    // Screenshot 1: Full Workbench with Obsidian Oscilloscope + Findings Table (1440x900)
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: path.join(ASSETS_DIR, 'screen_1_ipc_timeline.png'), fullPage: false });
 
-    // Thumbnail: 1280x720 crisp Perfetto/Wireshark overview
+    // Thumbnail: 1280x720 crisp Swiss studio overview
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: path.join(ASSETS_DIR, 'thumbnail.png'), fullPage: false });
@@ -163,6 +197,8 @@ async function main() {
     if (cliBlocks < 3) throw new Error(`Expected >= 3 CLI blocks, got ${cliBlocks}`);
 
     await page.click('#tabSlog2');
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.waitForTimeout(240);
     const slogRows = await page.locator('#slogBody tr').count();
     if (slogRows < 5) throw new Error(`Expected >= 5 slog2 rows, got ${slogRows}`);
     results.inspectorTabsOk = true;
@@ -180,6 +216,11 @@ async function main() {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${baseUrl}/codelab.html`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#step-7');
+    results.codelabFonts = await checkFontsLoaded(page);
+    if (results.codelabFonts.missingFamilies.length > 0) {
+      throw new Error(`Missing Google Fonts on /codelab.html: ${results.codelabFonts.missingFamilies.join(', ')}`);
+    }
+
     results.codelabDesktopOverflow = await checkOverflow(page);
 
     // Interact with checklist & verify progress
@@ -191,10 +232,16 @@ async function main() {
     }
     results.codelabChecklistOk = true;
 
-    // Screenshot 3: `/codelab.html` showing left sidebar + Step 6 & Step 7 Before/After Diff & comparison table
+    // Verify diff mode switcher
+    await page.click('.diff-mode-btn[data-diff="before"]');
+    await page.click('.diff-mode-btn[data-diff="after"]');
+    await page.click('.diff-mode-btn[data-diff="split"]');
+    results.diffSwitcherOk = true;
+
+    // Screenshot 3: `/codelab.html` showing sticky ceramic sidebar + Step 6 & Step 7 Before/After Diff & comparison table
     await page.evaluate(() => {
       const el = document.getElementById('step-6');
-      if (el) window.scrollTo(0, el.offsetTop - 48);
+      if (el) window.scrollTo(0, el.offsetTop - 20);
     });
     await page.screenshot({ path: path.join(ASSETS_DIR, 'screen_3_codelab.png'), fullPage: false });
 

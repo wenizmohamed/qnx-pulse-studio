@@ -31,7 +31,7 @@ function renderProgress() {
 
   const badge = document.getElementById('headerProgressBadge');
   badge.textContent = `${count} / ${TOTAL_STEPS} steps`;
-  badge.className = count === TOTAL_STEPS ? 'status-chip status-pass' : 'status-chip status-neutral';
+  badge.className = count === TOTAL_STEPS ? 'status-pill status-pass' : 'status-pill status-neutral';
 
   document.querySelectorAll('.toc-item').forEach((li) => {
     const step = Number.parseInt(li.getAttribute('data-step'), 10);
@@ -44,8 +44,8 @@ function renderProgress() {
     card.classList.toggle('completed', isDone);
     const btn = card.querySelector('.step-toggle');
     if (btn) {
-      btn.textContent = isDone ? 'Done' : 'Mark done';
-      btn.className = isDone ? 'tb-btn active step-toggle' : 'tb-btn step-toggle';
+      btn.textContent = isDone ? 'Completed' : 'Mark done';
+      btn.className = isDone ? 'step-toggle is-done' : 'step-toggle';
     }
   });
 }
@@ -69,7 +69,7 @@ document.getElementById('btnResetProgress').addEventListener('click', () => {
 // 1-click Copy Command buttons
 document.querySelectorAll('.copy-btn').forEach((btn) => {
   btn.addEventListener('click', async () => {
-    const pre = btn.closest('.code-block')?.querySelector('pre');
+    const pre = btn.closest('.code-card')?.querySelector('pre');
     if (!pre) return;
     try {
       await navigator.clipboard.writeText(pre.textContent.trim());

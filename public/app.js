@@ -2,25 +2,32 @@ import { analyzeCapture, formatJsonReport, formatMarkdownReport } from './engine
 import { PRESETS } from './engine/presets.js';
 
 const STATE_COLORS = {
-  RUNNING: '#3FB950',
-  PI_BOOST: '#2F9E8F',
-  MUTEX: '#D94848',
-  REPLY: '#D29922',
-  SEND: '#D29922',
-  RECEIVE: '#4C9AFF',
-  READY: '#6E7681',
-  SLEEP: '#2A3038'
+  RUNNING: '#20B276',
+  PI_BOOST: '#00A3E8',
+  MUTEX: '#E6482E',
+  REPLY: '#E59A28',
+  SEND: '#E59A28',
+  RECEIVE: '#56A8E8',
+  READY: '#6C7686',
+  SLEEP: '#28303E'
 };
 
 const STATE_TEXT_COLORS = {
-  RUNNING: '#0C1116',
-  PI_BOOST: '#0C1116',
-  MUTEX: '#FFF5F5',
-  REPLY: '#0C1116',
-  SEND: '#0C1116',
-  RECEIVE: '#0C1116',
-  READY: '#E6EDF3',
-  SLEEP: '#8B949E'
+  RUNNING: '#081711',
+  PI_BOOST: '#041724',
+  MUTEX: '#FFF6F4',
+  REPLY: '#1B1204',
+  SEND: '#1B1204',
+  RECEIVE: '#081624',
+  READY: '#F1F5FA',
+  SLEEP: '#94A0B2'
+};
+
+const CAPTURE_TITLES = {
+  'brake-ecu-inversion': 'Brake ECU Priority Inversion',
+  'surgical-arm-clean': 'Surgical Arm Fixed PI',
+  'qemu-starter': 'QEMU x86_64 Starter Capture',
+  custom: 'Custom QNX 8.0 Capture'
 };
 
 let currentBundle = PRESETS['brake-ecu-inversion'];
@@ -28,6 +35,12 @@ let currentPresetId = 'brake-ecu-inversion';
 let currentDeadlineUs = 500;
 let currentReport = null;
 let activeTab = 'findings';
+
+let scrubUs = 0;
+let scrubPlaying = false;
+let scrubRafId = null;
+let scrubLastFrameTs = 0;
+let timelineGeom = { leftPad: 204, plotW: 1056, duration: 1980, rulerH: 26, height: 260 };
 
 const el = (id) => document.getElementById(id);
 
@@ -51,40 +64,183 @@ function downloadFile(filename, content, mime) {
   URL.revokeObjectURL(url);
 }
 
-function renderSummary(report) {
-  const badge = el('verdictBadge');
-  if (report.status === 'PASS') {
-    badge.className = 'status-chip status-pass';
-    badge.textContent = `PASS exit 0 · max ${report.jitterStats.maxUs}µs`;
-  } else {
-    badge.className = 'status-chip status-fail';
-    badge.textContent = `FAIL exit ${report.exitCode} · max ${report.jitterStats.maxUs}µs`;
+function extractKernelLabel(targetStr) {
+  if (!targetStr) return 'procnto-smp-instr';
+  const paren = targetStr.match(/\(([^)]+)\)/);
+  return paren ? paren[1] : targetStr;
+}
+
+function stopScrubPlayback() {
+  scrubPlaying = false;
+  if (scrubRafId !== null) {
+    cancelAnimationFrame(scrubRafId);
+    scrubRafId = null;
+  }
+  const btn = el('btnScrubPlay');
+  const icon = el('scrubPlayIcon');
+  const label = el('scrubPlayLabel');
+  if (btn && icon && label) {
+    btn.classList.remove('is-playing');
+    btn.setAttribute('aria-pressed', 'false');
+    icon.innerHTML = '&#9654;';
+    const dur = Math.max(currentReport?.timelineDurationUs || 1000, 200);
+    label.textContent = `Scrub 0->${dur}µs`;
+  }
+}
+
+function updateScrubVisuals(us, updateStatusbar = false) {
+  const duration = timelineGeom.duration || 1000;
+  scrubUs = Math.max(0, Math.min(duration, us));
+
+  const slider = el('scrubSlider');
+  if (slider) {
+    slider.max = String(duration);
+    slider.value = String(Math.round(scrubUs));
   }
 
-  el('sumTarget').textContent = report.meta?.target || 'x86_64-neutrino-8.0 (procnto-smp-instr)';
-  el('sumThreads').textContent = `${report.summary.totalThreads} (${report.summary.fifoThreads} FIFO)`;
+  const readout = el('scrubTimeReadout');
+  if (readout) {
+    readout.textContent = `t = ${Math.round(scrubUs)}µs`;
+  }
 
-  const jitEl = el('sumJitter');
-  jitEl.textContent = `${report.jitterStats.maxUs}µs`;
-  jitEl.className = `sum-v ${report.jitterStats.maxUs > report.options.deadlineUs ? 'is-bad' : 'is-ok'}`;
+  const x = timelineGeom.leftPad + (scrubUs / duration) * timelineGeom.plotW;
+  const cursorLine = el('scrubCursorLine');
+  const cursorTag = el('scrubCursorTag');
+  const cursorText = el('scrubCursorText');
 
-  const invEl = el('sumInversions');
+  if (cursorLine) {
+    cursorLine.setAttribute('x1', x.toFixed(1));
+    cursorLine.setAttribute('x2', x.toFixed(1));
+  }
+  if (cursorTag && cursorText) {
+    const tagW = 56;
+    const clampedX = Math.max(timelineGeom.leftPad + 2, Math.min(timelineGeom.leftPad + timelineGeom.plotW - tagW, x - tagW / 2));
+    cursorTag.setAttribute('x', clampedX.toFixed(1));
+    cursorText.setAttribute('x', (clampedX + tagW / 2).toFixed(1));
+    cursorText.textContent = `${Math.round(scrubUs)}µs`;
+  }
+
+  if (updateStatusbar && currentReport) {
+    const activeStates = [];
+    for (const lane of currentReport.timelineLanes) {
+      const hit = lane.segments.find((s) => scrubUs >= s.startUs && scrubUs <= s.endUs);
+      if (hit) {
+        activeStates.push(`${lane.threadName}[${hit.state}]`);
+      }
+    }
+    const inInv = currentReport.inversionBands.find((b) => scrubUs >= b.startUs && scrubUs <= b.endUs);
+    const invPrefix = inInv ? `INVERSION WINDOW (${inInv.durationUs}µs) | ` : '';
+    const summaryText = activeStates.length
+      ? `${invPrefix}@ ${Math.round(scrubUs)}µs: ${activeStates.slice(0, 4).join(' · ')}`
+      : `@ ${Math.round(scrubUs)}µs: idle / between trace markers`;
+
+    const inspector = el('timelineInspector');
+    if (inspector) {
+      inspector.innerHTML = `<span class="statusbar-text">${escapeHtml(summaryText)}</span><span class="status-right">clock: SYSPAGE(qtime) · traceprinter</span>`;
+    }
+  }
+}
+
+function startScrubPlayback() {
+  if (!currentReport) return;
+  const duration = Math.max(currentReport.timelineDurationUs || 1000, 200);
+  if (scrubUs >= duration - 10) {
+    scrubUs = 0;
+  }
+  scrubPlaying = true;
+  scrubLastFrameTs = performance.now();
+
+  const btn = el('btnScrubPlay');
+  const icon = el('scrubPlayIcon');
+  const label = el('scrubPlayLabel');
+  if (btn && icon && label) {
+    btn.classList.add('is-playing');
+    btn.setAttribute('aria-pressed', 'true');
+    icon.innerHTML = '&#10074;&#10074;';
+    label.textContent = 'Pause scrub';
+  }
+
+  const sweepDurationMs = 4200;
+  const step = (now) => {
+    if (!scrubPlaying) return;
+    const dt = now - scrubLastFrameTs;
+    scrubLastFrameTs = now;
+    const nextUs = scrubUs + (dt / sweepDurationMs) * duration;
+    if (nextUs >= duration) {
+      updateScrubVisuals(duration, true);
+      stopScrubPlayback();
+      return;
+    }
+    updateScrubVisuals(nextUs, true);
+    scrubRafId = requestAnimationFrame(step);
+  };
+  scrubRafId = requestAnimationFrame(step);
+}
+
+function renderSummary(report) {
+  const isPass = report.status === 'PASS';
+
+  // Navbar status pill & LEDs
+  const badge = el('verdictBadge');
+  badge.className = isPass ? 'status-pill status-pass' : 'status-pill status-fail';
+  badge.textContent = isPass ? 'PASS exit 0' : `FAIL exit ${report.exitCode}`;
+
+  const brandLed = el('brandLed');
+  if (brandLed) brandLed.className = isPass ? 'brand-dot is-pass' : 'brand-dot';
+
+  const stageLed = el('stageLed');
+  if (stageLed) stageLed.className = isPass ? 'stage-led is-pass' : 'stage-led';
+
+  // Dynamic Masthead Title
+  const heading = el('captureHeading');
+  if (heading) {
+    heading.textContent = CAPTURE_TITLES[currentPresetId] || report.meta?.name || 'QNX 8.0 Capture';
+  }
+
+  // 4 Segmented Capsules
+  el('capThreads').textContent = `${report.summary.totalThreads} Threads (${report.summary.fifoThreads} FIFO)`;
+
+  const capInv = el('capInversions');
   if (report.summary.priorityInversions > 0) {
     const peakUs = report.inversionBands[0]?.durationUs ?? 0;
-    invEl.textContent = `${report.summary.priorityInversions} (${peakUs}µs)`;
-    invEl.className = 'sum-v is-bad';
+    capInv.textContent = `${report.summary.priorityInversions} Inversion (${peakUs}µs)`;
+    capInv.className = 'metric-capsule capsule-signal';
   } else {
-    invEl.textContent = '0';
-    invEl.className = 'sum-v is-ok';
+    capInv.textContent = '0 Inversions (Clean PI)';
+    capInv.className = 'metric-capsule capsule-emerald';
   }
 
-  const blkEl = el('sumBlocked');
-  blkEl.textContent = String(report.summary.ipcBlockChains);
-  blkEl.className = `sum-v ${report.summary.ipcBlockChains > 0 ? 'is-warn' : 'is-ok'}`;
+  el('capContention').textContent = `${report.summary.ipcBlockChains} Blocked IPC · ${report.summary.starvedThreads} Starved`;
+  el('capKernel').textContent = extractKernelLabel(report.meta?.target);
 
-  const stEl = el('sumStarved');
-  stEl.textContent = String(report.summary.starvedThreads);
-  stEl.className = `sum-v ${report.summary.starvedThreads > 0 ? 'is-warn' : 'is-ok'}`;
+  const targetClock = el('targetClockMeta');
+  if (targetClock) {
+    targetClock.textContent = `${report.meta?.target || 'x86_64-neutrino-8.0'} · SYSPAGE(qtime)`;
+  }
+
+  // 3 Giant Borderless Open Numerals
+  const numJitter = el('numMaxJitter');
+  numJitter.textContent = `${report.jitterStats.maxUs}µs`;
+  numJitter.className = `numeral-value ${report.jitterStats.maxUs > report.options.deadlineUs ? 'is-bad' : 'is-ok'}`;
+
+  const numBudget = el('numBudget');
+  numBudget.textContent = `${report.options.deadlineUs}µs`;
+
+  const numGate = el('numCiGate');
+  numGate.textContent = isPass ? 'exit 0' : `exit ${report.exitCode}`;
+  numGate.className = `numeral-value ${isPass ? 'is-ok' : 'is-bad'}`;
+
+  // Compare Before vs After PI Fix pill state
+  const compareBtn = el('btnComparePi');
+  if (compareBtn) {
+    if (currentPresetId === 'surgical-arm-clean') {
+      compareBtn.classList.add('is-clean');
+      compareBtn.textContent = 'Compare: Before PI Fix (1842µs)';
+    } else {
+      compareBtn.classList.remove('is-clean');
+      compareBtn.textContent = 'Compare Before vs After PI Fix';
+    }
+  }
 }
 
 function renderSvgTimeline(report) {
@@ -98,13 +254,15 @@ function renderSvgTimeline(report) {
   const rulerH = 26;
   const bannerH = report.inversionBands.length > 0 ? 18 : 6;
   const topPad = rulerH + bannerH;
-  const laneH = 42;
+  const laneH = 36;
   const bottomPad = 10;
   const plotW = width - leftPad - rightPad;
-  const height = Math.max(220, topPad + lanes.length * laneH + bottomPad);
+  const height = Math.max(210, topPad + lanes.length * laneH + bottomPad);
+
+  timelineGeom = { leftPad, plotW, duration, rulerH, height };
 
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  el('timelineMeta').textContent = `${lanes.length} threads · ${duration}µs window · ${report.ipcEdges.length} IPC`;
+  el('timelineMeta').textContent = `${lanes.length} lanes · ${duration}µs · ${report.ipcEdges.length} IPC edges`;
 
   const xOf = (us) => leftPad + (Math.max(0, Math.min(duration, us)) / duration) * plotW;
   const yOfLane = (idx) => topPad + idx * laneH;
@@ -115,26 +273,26 @@ function renderSvgTimeline(report) {
   let markup = `
     <defs>
       <pattern id="invHatch" width="8" height="8" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
-        <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(217,72,72,0.22)" stroke-width="1.5" />
+        <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(230,72,46,0.28)" stroke-width="1.6" />
       </pattern>
       <marker id="arrowSend" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
-        <path d="M 0 1 L 8 4 L 0 7 z" fill="#D29922" />
+        <path d="M 0 1 L 8 4 L 0 7 z" fill="#E59A28" />
       </marker>
       <marker id="arrowReply" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
-        <path d="M 0 1 L 8 4 L 0 7 z" fill="#3FB950" />
+        <path d="M 0 1 L 8 4 L 0 7 z" fill="#20B276" />
       </marker>
       <marker id="arrowPulse" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
-        <path d="M 0 1 L 8 4 L 0 7 z" fill="#4C9AFF" />
+        <path d="M 0 1 L 8 4 L 0 7 z" fill="#00A3E8" />
       </marker>
     </defs>
 
-    <!-- Canvas & Perfetto-style Left Track Gutter + Top Ruler -->
-    <rect x="0" y="0" width="${width}" height="${height}" fill="#121417" />
-    <rect x="0" y="0" width="${leftPad}" height="${height}" fill="#181B20" />
-    <rect x="0" y="0" width="${width}" height="${rulerH}" fill="#181B20" />
-    <line x1="0" y1="${rulerH}" x2="${width}" y2="${rulerH}" stroke="#262B33" stroke-width="1" />
-    <line x1="${leftPad}" y1="0" x2="${leftPad}" y2="${height}" stroke="#262B33" stroke-width="1" />
-    <text x="10" y="17" fill="#8B949E" font-family="monospace" font-size="10.5" font-weight="600">PRIO  THREAD (PID:TID)</text>
+    <!-- Deep Obsidian Oscilloscope Surface & Track Gutter -->
+    <rect x="0" y="0" width="${width}" height="${height}" fill="#111419" />
+    <rect x="0" y="0" width="${leftPad}" height="${height}" fill="#161A22" />
+    <rect x="0" y="0" width="${width}" height="${rulerH}" fill="#161A22" />
+    <line x1="0" y1="${rulerH}" x2="${width}" y2="${rulerH}" stroke="#262D3B" stroke-width="1" />
+    <line x1="${leftPad}" y1="0" x2="${leftPad}" y2="${height}" stroke="#262D3B" stroke-width="1" />
+    <text x="12" y="17" fill="#8D98A9" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600">PRIO  THREAD (PID:TID)</text>
   `;
 
   // Vertical hairline gridlines & ruler ticks in us
@@ -143,11 +301,11 @@ function renderSvgTimeline(report) {
     const us = Math.round((duration / tickCount) * i);
     const x = xOf(us);
     const anchor = i === 0 ? 'start' : i === tickCount ? 'end' : 'middle';
-    const labelX = i === 0 ? x + 2 : i === tickCount ? x - 2 : x;
+    const labelX = i === 0 ? x + 3 : i === tickCount ? x - 3 : x;
 
-    markup += `<line x1="${x.toFixed(1)}" y1="${rulerH}" x2="${x.toFixed(1)}" y2="${height - bottomPad}" stroke="#1E232A" stroke-width="1" />`;
-    markup += `<line x1="${x.toFixed(1)}" y1="${rulerH - 5}" x2="${x.toFixed(1)}" y2="${rulerH}" stroke="#485261" stroke-width="1" />`;
-    markup += `<text x="${labelX.toFixed(1)}" y="${rulerH - 9}" fill="#8B949E" font-family="monospace" font-size="10" text-anchor="${anchor}">${us}µs</text>`;
+    markup += `<line x1="${x.toFixed(1)}" y1="${rulerH}" x2="${x.toFixed(1)}" y2="${height - bottomPad}" stroke="#1E2430" stroke-width="1" />`;
+    markup += `<line x1="${x.toFixed(1)}" y1="${rulerH - 5}" x2="${x.toFixed(1)}" y2="${rulerH}" stroke="#444F63" stroke-width="1" />`;
+    markup += `<text x="${labelX.toFixed(1)}" y="${rulerH - 9}" fill="#8D98A9" font-family="JetBrains Mono, monospace" font-size="10" text-anchor="${anchor}">${us}µs</text>`;
   }
 
   // Priority Inversion vertical band
@@ -156,18 +314,18 @@ function renderSvgTimeline(report) {
     const x2 = xOf(inv.endUs);
     const w = Math.max(4, x2 - x1);
     const bandH = lanes.length * laneH;
-    const labelW = Math.min(Math.max(w, 240), 300);
+    const labelW = Math.min(Math.max(w, 250), 320);
     const tip = escapeHtml(
       `PRIORITY INVERSION (${inv.durationUs}µs): ${inv.highThread.name}[${inv.highThread.prio}f] blocked on ${inv.lowOwner.name}[${inv.lowOwner.prio}f] while ${inv.mediumThread.name}[${inv.mediumThread.prio}f] ran on CPU${inv.cpu}`
     );
     markup += `
       <g class="svg-hit" data-tip="${tip}" style="cursor:pointer;">
-        <rect x="${x1.toFixed(1)}" y="${topPad}" width="${w.toFixed(1)}" height="${bandH}" fill="rgba(217,72,72,0.10)" />
+        <rect x="${x1.toFixed(1)}" y="${topPad}" width="${w.toFixed(1)}" height="${bandH}" fill="rgba(230,72,46,0.12)" />
         <rect x="${x1.toFixed(1)}" y="${topPad}" width="${w.toFixed(1)}" height="${bandH}" fill="url(#invHatch)" />
-        <line x1="${x1.toFixed(1)}" y1="${rulerH}" x2="${x1.toFixed(1)}" y2="${topPad + bandH}" stroke="#D94848" stroke-width="1" stroke-dasharray="3 2" />
-        <line x1="${x2.toFixed(1)}" y1="${rulerH}" x2="${x2.toFixed(1)}" y2="${topPad + bandH}" stroke="#D94848" stroke-width="1" stroke-dasharray="3 2" />
-        <rect x="${x1.toFixed(1)}" y="${rulerH + 1}" width="${labelW.toFixed(1)}" height="16" rx="1" fill="#3B1A1E" stroke="#D94848" stroke-width="0.8" />
-        <text x="${(x1 + 6).toFixed(1)}" y="${rulerH + 12}" fill="#F07171" font-family="monospace" font-size="10" font-weight="600">INVERSION ${inv.durationUs}µs (p${inv.highThread.prio} stalled by p${inv.mediumThread.prio})</text>
+        <line x1="${x1.toFixed(1)}" y1="${rulerH}" x2="${x1.toFixed(1)}" y2="${topPad + bandH}" stroke="#E6482E" stroke-width="1.2" stroke-dasharray="3 2" />
+        <line x1="${x2.toFixed(1)}" y1="${rulerH}" x2="${x2.toFixed(1)}" y2="${topPad + bandH}" stroke="#E6482E" stroke-width="1.2" stroke-dasharray="3 2" />
+        <rect x="${x1.toFixed(1)}" y="${rulerH + 1}" width="${labelW.toFixed(1)}" height="16" rx="3" fill="#461A15" stroke="#E6482E" stroke-width="0.9" />
+        <text x="${(x1 + 7).toFixed(1)}" y="${rulerH + 12}" fill="#FFA494" font-family="JetBrains Mono, monospace" font-size="10" font-weight="700">INVERSION ${inv.durationUs}µs (p${inv.highThread.prio} stalled by p${inv.mediumThread.prio})</text>
       </g>
     `;
   }
@@ -178,31 +336,31 @@ function renderSvgTimeline(report) {
     const midY = y + laneH / 2;
 
     if (idx % 2 === 1) {
-      markup += `<rect x="${leftPad + 1}" y="${y}" width="${width - leftPad - 1}" height="${laneH}" fill="rgba(255,255,255,0.012)" />`;
+      markup += `<rect x="${leftPad + 1}" y="${y}" width="${width - leftPad - 1}" height="${laneH}" fill="rgba(255,255,255,0.015)" />`;
     }
-    markup += `<line x1="0" y1="${y + laneH}" x2="${width}" y2="${y + laneH}" stroke="#262B33" stroke-width="1" />`;
+    markup += `<line x1="0" y1="${y + laneH}" x2="${width}" y2="${y + laneH}" stroke="#202633" stroke-width="1" />`;
 
     // Left track header
-    const prioBorder = lane.priority >= 55 ? '#4C9AFF' : lane.priority >= 35 ? '#D29922' : '#485261';
-    const prioText = lane.priority >= 55 ? '#8FC1FF' : lane.priority >= 35 ? '#E3B341' : '#8B949E';
+    const prioBorder = lane.priority >= 55 ? '#00A3E8' : lane.priority >= 35 ? '#E59A28' : '#4C566A';
+    const prioText = lane.priority >= 55 ? '#7DD8FF' : lane.priority >= 35 ? '#F3BE63' : '#9AA4B5';
     markup += `
-      <rect x="8" y="${y + 9}" width="34" height="19" rx="2" fill="#121417" stroke="${prioBorder}" stroke-width="0.9" />
-      <text x="25" y="${y + 22}" fill="${prioText}" font-family="monospace" font-size="10.5" font-weight="600" text-anchor="middle">${lane.priority}f</text>
-      <text x="50" y="${y + 17}" fill="#E6EDF3" font-family="monospace" font-size="11.5" font-weight="600">${escapeHtml(lane.threadName.slice(0, 18))}</text>
-      <text x="50" y="${y + 30}" fill="#8B949E" font-family="monospace" font-size="9.5">${lane.pid}:${lane.tid}</text>
+      <rect x="10" y="${y + 8}" width="34" height="19" rx="5" fill="#111419" stroke="${prioBorder}" stroke-width="1" />
+      <text x="27" y="${y + 21}" fill="${prioText}" font-family="JetBrains Mono, monospace" font-size="10" font-weight="700" text-anchor="middle">${lane.priority}f</text>
+      <text x="52" y="${y + 16}" fill="#EFF3F8" font-family="JetBrains Mono, monospace" font-size="11" font-weight="600">${escapeHtml(lane.threadName.slice(0, 18))}</text>
+      <text x="52" y="${y + 28}" fill="#7D8798" font-family="JetBrains Mono, monospace" font-size="9.5">${lane.pid}:${lane.tid}</text>
     `;
 
-    // Execution bars (flat Perfetto style, 1px radius)
+    // Execution bars (flat Perfetto hardware instrument style)
     for (const seg of lane.segments) {
       const sx = xOf(seg.startUs);
       const ex = xOf(seg.endUs);
-      const sw = Math.max(2, ex - sx);
-      const fill = STATE_COLORS[seg.state] || '#6E7681';
-      const txtColor = STATE_TEXT_COLORS[seg.state] || '#E6EDF3';
+      const sw = Math.max(2.5, ex - sx);
+      const fill = STATE_COLORS[seg.state] || '#6C7686';
+      const txtColor = STATE_TEXT_COLORS[seg.state] || '#EFF3F8';
       const tip = escapeHtml(
         `${lane.threadName} (${lane.id}, ${seg.prio}f) | ${seg.state} | ${seg.startUs}µs..${seg.endUs}µs (${seg.durationUs}µs) | CPU${seg.cpu}${seg.detail ? ' | ' + seg.detail : ''}`
       );
-      const barH = 20;
+      const barH = 19;
       const barY = midY - barH / 2;
       const label = `${seg.state} ${seg.durationUs}µs`;
       const fitsFull = sw > label.length * 6.2 + 10;
@@ -210,12 +368,12 @@ function renderSvgTimeline(report) {
 
       markup += `
         <g class="svg-hit" data-tip="${tip}" style="cursor:pointer;">
-          <rect x="${sx.toFixed(1)}" y="${barY.toFixed(1)}" width="${sw.toFixed(1)}" height="${barH}" rx="1" fill="${fill}" stroke="#121417" stroke-width="0.8" />
+          <rect x="${sx.toFixed(1)}" y="${barY.toFixed(1)}" width="${sw.toFixed(1)}" height="${barH}" rx="3" fill="${fill}" stroke="#111419" stroke-width="0.9" />
           ${
             fitsFull
-              ? `<text x="${(sx + 5).toFixed(1)}" y="${(midY + 3.5).toFixed(1)}" fill="${txtColor}" font-family="monospace" font-size="9.5" font-weight="600">${escapeHtml(label)}</text>`
+              ? `<text x="${(sx + 6).toFixed(1)}" y="${(midY + 3.5).toFixed(1)}" fill="${txtColor}" font-family="JetBrains Mono, monospace" font-size="9.5" font-weight="700">${escapeHtml(label)}</text>`
               : fitsShort
-                ? `<text x="${(sx + 4).toFixed(1)}" y="${(midY + 3.5).toFixed(1)}" fill="${txtColor}" font-family="monospace" font-size="9" font-weight="600">${seg.durationUs}µs</text>`
+                ? `<text x="${(sx + 5).toFixed(1)}" y="${(midY + 3.5).toFixed(1)}" fill="${txtColor}" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700">${seg.durationUs}µs</text>`
                 : ''
           }
         </g>
@@ -232,7 +390,7 @@ function renderSvgTimeline(report) {
     const x = xOf(edge.timeUs);
     const y1 = yOfLane(fromIdx) + laneH / 2;
     const y2 = yOfLane(toIdx) + laneH / 2;
-    const stroke = edge.kind === 'PULSE' ? '#4C9AFF' : edge.kind === 'REPLY' ? '#3FB950' : '#D29922';
+    const stroke = edge.kind === 'PULSE' ? '#00A3E8' : edge.kind === 'REPLY' ? '#20B276' : '#E59A28';
     const marker = edge.kind === 'PULSE' ? 'url(#arrowPulse)' : edge.kind === 'REPLY' ? 'url(#arrowReply)' : 'url(#arrowSend)';
     const dash = edge.kind === 'PULSE' ? '3 2' : '';
     const tip = escapeHtml(
@@ -241,22 +399,42 @@ function renderSvgTimeline(report) {
 
     markup += `
       <g class="svg-hit" data-tip="${tip}" style="cursor:pointer;">
-        <line x1="${x.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${stroke}" stroke-width="1.5" ${dash ? `stroke-dasharray="${dash}"` : ''} marker-end="${marker}" />
-        <circle cx="${x.toFixed(1)}" cy="${y1.toFixed(1)}" r="2.2" fill="${stroke}" />
+        <line x1="${x.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${stroke}" stroke-width="1.6" ${dash ? `stroke-dasharray="${dash}"` : ''} marker-end="${marker}" />
+        <circle cx="${x.toFixed(1)}" cy="${y1.toFixed(1)}" r="2.4" fill="${stroke}" />
       </g>
     `;
   }
 
+  // Live Microsecond Scrub Playhead Cursor
+  const initCursorUs = report.inversionBands.length > 0 ? Math.round((report.inversionBands[0].startUs + report.inversionBands[0].endUs) / 2) : Math.round(duration * 0.25);
+  scrubUs = Math.min(duration, initCursorUs);
+  const cx = xOf(scrubUs);
+  const tagW = 56;
+  const clampedTagX = Math.max(leftPad + 2, Math.min(leftPad + plotW - tagW, cx - tagW / 2));
+
+  markup += `
+    <g id="scrubCursorGroup" pointer-events="none">
+      <line id="scrubCursorLine" x1="${cx.toFixed(1)}" y1="${rulerH}" x2="${cx.toFixed(1)}" y2="${height - bottomPad}" stroke="#00B8FF" stroke-width="1.6" />
+      <rect id="scrubCursorTag" x="${clampedTagX.toFixed(1)}" y="4" width="${tagW}" height="17" rx="8.5" fill="#0086C9" stroke="#5CD0FF" stroke-width="0.9" />
+      <text id="scrubCursorText" x="${(clampedTagX + tagW / 2).toFixed(1)}" y="15.5" fill="#FFFFFF" font-family="JetBrains Mono, monospace" font-size="9.5" font-weight="700" text-anchor="middle">${scrubUs}µs</text>
+    </g>
+  `;
+
   svg.innerHTML = markup;
 
+  // Bind hit inspection
   const inspector = el('timelineInspector');
   svg.querySelectorAll('.svg-hit').forEach((node) => {
     const show = () => {
-      inspector.innerHTML = `<span>${node.getAttribute('data-tip')}</span><span class="status-right">clock: SYSPAGE(qtime)</span>`;
+      inspector.innerHTML = `<span class="statusbar-text">${node.getAttribute('data-tip')}</span><span class="status-right">clock: SYSPAGE(qtime) · traceprinter</span>`;
     };
     node.addEventListener('mouseenter', show);
     node.addEventListener('click', show);
   });
+
+  // Update scrub slider & button label for current duration
+  stopScrubPlayback();
+  updateScrubVisuals(scrubUs, false);
 }
 
 function getFilterQuery() {
@@ -298,7 +476,7 @@ function renderFindings(report) {
       <tr>
         <td class="col-nowrap"><span class="tag tag-${escapeHtml(f.severity)}">${escapeHtml(f.severity)}</span></td>
         <td class="col-nowrap col-muted">${escapeHtml(f.category)}</td>
-        <td class="col-wrap">${escapeHtml(f.title)}</td>
+        <td class="col-wrap"><strong>${escapeHtml(f.title)}</strong></td>
         <td class="col-wrap col-muted">${escapeHtml(f.description)}</td>
         <td class="col-mono-wrap col-ok">${escapeHtml(f.remediation)}</td>
       </tr>
@@ -364,7 +542,7 @@ function renderPidin(report) {
         <tr class="${isBlocked ? 'row-blocked' : ''}">
           <td class="col-nowrap col-accent">${escapeHtml(t.id)}</td>
           <td class="col-nowrap">${escapeHtml(t.process)}</td>
-          <td class="col-nowrap">${escapeHtml(t.threadName)}</td>
+          <td class="col-nowrap"><strong>${escapeHtml(t.threadName)}</strong></td>
           <td class="col-nowrap"><strong>${t.priority}${escapeHtml(t.policyCode)}</strong></td>
           <td class="col-nowrap col-muted">${escapeHtml(t.policy)}</td>
           <td class="col-nowrap"><span class="tag tag-${escapeHtml(t.state)}">${escapeHtml(t.state)}</span></td>
@@ -407,7 +585,7 @@ function renderPps(report) {
       (r) => `
       <tr>
         <td class="col-nowrap col-accent">${escapeHtml(r.path)}</td>
-        <td class="col-nowrap">${escapeHtml(r.key)}</td>
+        <td class="col-nowrap"><strong>${escapeHtml(r.key)}</strong></td>
         <td class="col-nowrap col-muted">${escapeHtml(r.enc)}</td>
         <td class="col-mono-wrap ${r.isAlert ? 'col-bad' : 'col-ok'}">${escapeHtml(r.valText)}</td>
       </tr>
@@ -421,7 +599,7 @@ function renderCliPane(report) {
   const deadline = report.options.deadlineUs;
   const commands = [
     {
-      label: 'Run host CLI audit (returns exit 0 on PASS, exit 2 on RT violation)',
+      label: 'Run host CLI audit (exit 0 on PASS, exit 2 on RT violation)',
       cmd: `node cli/qnx-pulse.mjs analyze ${sampleDir} --deadline ${deadline}`
     },
     {
@@ -445,7 +623,7 @@ function renderCliPane(report) {
       <div class="cli-row">
         <div class="cli-row-head">
           <span>${escapeHtml(item.label)}</span>
-          <button class="tb-btn cli-copy-btn" data-cli-idx="${idx}" type="button">Copy</button>
+          <button class="code-copy-btn cli-copy-btn" data-cli-idx="${idx}" type="button">Copy</button>
         </div>
         <pre>${escapeHtml(item.cmd)}</pre>
       </div>
@@ -513,7 +691,7 @@ function selectPreset(id) {
   currentPresetId = id;
   currentBundle = PRESETS[id];
   const sel = el('captureSelect');
-  if (sel.value !== id) sel.value = id;
+  if (sel && sel.value !== id) sel.value = id;
   runAnalysis();
 }
 
@@ -533,6 +711,43 @@ function setupInteractions() {
     if (!Number.isNaN(parsed) && parsed >= 10) {
       currentDeadlineUs = parsed;
       runAnalysis();
+    }
+  });
+
+  // Live Microsecond Scrub Controls
+  el('btnScrubPlay').addEventListener('click', () => {
+    if (scrubPlaying) stopScrubPlayback();
+    else startScrubPlayback();
+  });
+
+  el('scrubSlider').addEventListener('input', (e) => {
+    stopScrubPlayback();
+    const val = Number.parseFloat(e.target.value);
+    if (!Number.isNaN(val)) {
+      updateScrubVisuals(val, true);
+    }
+  });
+
+  // Click anywhere on SVG plot to jump scrub cursor
+  el('timelineSvg').addEventListener('click', (e) => {
+    const svg = el('timelineSvg');
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width) return;
+    const scaleX = 1280 / rect.width;
+    const svgX = (e.clientX - rect.left) * scaleX;
+    if (svgX >= timelineGeom.leftPad && svgX <= timelineGeom.leftPad + timelineGeom.plotW) {
+      stopScrubPlayback();
+      const ratio = (svgX - timelineGeom.leftPad) / timelineGeom.plotW;
+      updateScrubVisuals(ratio * timelineGeom.duration, true);
+    }
+  });
+
+  // 1-Click Compare Before vs After PI Fix toggle
+  el('btnComparePi').addEventListener('click', () => {
+    if (currentPresetId === 'surgical-arm-clean') {
+      selectPreset('brake-ecu-inversion');
+    } else {
+      selectPreset('surgical-arm-clean');
     }
   });
 
@@ -596,7 +811,7 @@ function setupInteractions() {
   el('btnRunCustom').addEventListener('click', () => {
     currentPresetId = 'custom';
     currentBundle = {
-      meta: { name: 'Custom QNX 8.0 Capture', target: 'x86_64-neutrino-8.0 (custom)' },
+      meta: { name: 'Custom QNX 8.0 Capture', target: 'x86_64-neutrino-8.0 (procnto-smp-instr)' },
       pidin: el('inputPidin').value,
       trace: el('inputTrace').value,
       slog2: el('inputSlog2').value,
