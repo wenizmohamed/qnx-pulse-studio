@@ -3,12 +3,12 @@
  * QNX Pulse Studio - Cross-Platform QNX 8.0 Host Analyzer CLI
  *
  * Usage:
- *   qnx-pulse analyze <capture-dir> [--deadline 500] [--format terminal|json|markdown] [--out file]
- *   qnx-pulse analyze --preset brake-ecu-inversion [--deadline 500] [--format terminal|json|markdown]
+ *   qnx-pulse analyze <capture-dir> [--deadline 500] [--format terminal|json|markdown|sarif|junit] [--out file]
+ *   qnx-pulse analyze --preset brake-ecu-inversion [--deadline 500] [--format terminal|json|markdown|sarif|junit]
  *   qnx-pulse list-presets
  *
  * CI Exit Codes:
- *   0 = PASS (Zero priority inversions, zero RT deadline violations, zero IPC deadlocks)
+ *   0 = PASS (Zero priority inversions, zero transitive PI chains, zero RT deadline violations, zero IPC deadlocks)
  *   2 = FAIL (Hard Real-Time violation detected)
  *   1 = CLI usage / IO error
  *
@@ -18,11 +18,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { analyzeCapture, formatJsonReport, formatMarkdownReport } from '../src/analyzer.js';
+import {
+  analyzeCapture,
+  formatJsonReport,
+  formatJunitReport,
+  formatMarkdownReport,
+  formatSarifReport
+} from '../src/analyzer.js';
 import { getPreset, listPresetIds, PRESETS } from '../src/presets.js';
 
+const VALID_FORMATS = new Set(['terminal', 'json', 'markdown', 'md', 'sarif', 'junit']);
+
 function printHelp() {
-  console.log(`QNX Pulse Studio CLI v1.0.0 — QNX Neutrino 8.0 Real-Time Trace & IPC Auditor
+  console.log(`QNX Pulse Studio CLI v2.0.0 — QNX Neutrino 8.0 Real-Time Trace, Multi-Hop PI & SMP Auditor
 
 Usage:
   qnx-pulse analyze <capture-dir> [options]
@@ -33,14 +41,14 @@ Options:
   --preset <id>          Analyze built-in QNX 8.0 capture preset
   --deadline <us>        Hard-RT deadline jitter budget in microseconds (default: 500)
   --starvation <us>      Thread READY starvation threshold in microseconds (default: 1000)
-  --format <type>        Output format: terminal | json | markdown (default: terminal)
+  --format <type>        Output format: terminal | json | markdown | sarif | junit (default: terminal)
   --out <path>           Write report to file (in addition to summary)
   -h, --help             Show help
 
 Exit Codes:
   0  PASS — Real-time constraints met
-  2  FAIL — Priority inversion, IPC deadlock, or deadline jitter violation detected
-  1  ERROR — Invalid arguments or unreadable capture directory`);
+  2  FAIL — Priority inversion, transitive PI chain, IPC deadlock, or deadline jitter violation detected
+  1  ERROR — Invalid arguments, unsupported format, or unreadable capture directory`);
 }
 
 function readOptionalFile(dir, candidates) {
@@ -90,32 +98,42 @@ function loadCaptureDirectory(dirPath) {
 }
 
 function formatTerminalReport(report) {
-  const bar = '='.repeat(74);
+  const bar = '='.repeat(78);
   const verdict = report.status === 'PASS' ? 'PASS (EXIT 0)' : 'RT VIOLATION FAIL (EXIT 2)';
   const out = [];
   out.push(bar);
-  out.push(`  QNX PULSE STUDIO v${report.version}  |  QNX NEUTRINO 8.0 RT AUDITOR`);
+  out.push(`  QNX PULSE STUDIO v${report.version}  |  QNX NEUTRINO 8.0 RT & MULTI-HOP PI AUDITOR`);
   out.push(bar);
   out.push(`  Capture  : ${report.meta?.name || 'Custom'}`);
   out.push(`  Target   : ${report.meta?.target || 'x86_64-neutrino-8.0'}`);
   out.push(`  Verdict  : ${verdict}   |   RT Score: ${report.score}/100`);
   out.push(
-    `  Jitter   : max=${report.jitterStats.maxUs}us  p95=${report.jitterStats.p95Us}us  p99=${report.jitterStats.p99Us}us  budget=${report.options.deadlineUs}us`
+    `  Jitter   : max=${report.jitterStats.maxUs}us  p95=${report.jitterStats.p95Us}us  p99=${report.jitterStats.p99Us}us  budget=${report.options.deadlineUs}us  margin=${report.jitterStats.worstMarginUs}us`
   );
   out.push(
-    `  Counters : inversions=${report.summary.priorityInversions}  violations=${report.summary.deadlineViolations}  ipc_chains=${report.summary.ipcBlockChains}  starved=${report.summary.starvedThreads}`
+    `  Counters : inversions=${report.summary.priorityInversions}  multihop_pi=${report.summary.multiHopPiChains}  violations=${report.summary.deadlineViolations}  ipc_chains=${report.summary.ipcBlockChains}  starved=${report.summary.starvedThreads}`
   );
   out.push(
-    `  Inputs   : threads=${report.summary.totalThreads} (${report.summary.fifoThreads} SCHED_FIFO)  trace_events=${report.summary.totalTraceEvents}  slog2=${report.summary.totalLogs}  pps_objs=${report.summary.ppsObjectCount}`
+    `  SMP/Input: cores=${report.summary.smpCores}  migrations=${report.summary.smpMigrations}  preemptions=${report.summary.smpPreemptions}  threads=${report.summary.totalThreads} (${report.summary.fifoThreads} SCHED_FIFO)  events=${report.summary.totalTraceEvents}`
   );
-  out.push('-'.repeat(74));
+  out.push('-'.repeat(78));
+
+  if (report.piChains && report.piChains.length > 0) {
+    out.push(`  BLOCKING CHAINS & WCBL (${report.piChains.length}):`);
+    for (const c of report.piChains) {
+      const pathStr = c.nodes.map((n) => `${n.threadName}[${n.priority}f]`).join(' -> ');
+      const beforeTxt = c.wcbl.beforePiUs === null ? 'UNBOUNDED' : `${c.wcbl.beforePiUs}us`;
+      out.push(`   - ${pathStr} (${c.hops}h) | WCBL: ${beforeTxt} -> ${c.wcbl.afterPiUs}us with PI (-${c.wcbl.reductionPct}%)`);
+    }
+    out.push('-'.repeat(78));
+  }
 
   if (report.findings.length === 0) {
     out.push('  [OK] Zero priority inversions, zero deadline violations, deterministic QNX IPC.');
   } else {
     out.push(`  FINDINGS (${report.findings.length}):`);
     for (const f of report.findings) {
-      out.push(`   * [${f.severity}] ${f.title}`);
+      out.push(`   * [${f.severity}][${f.ruleId || 'QNX'}] ${f.title}`);
       out.push(`     Detail : ${f.description}`);
       out.push(`     Fix    : ${f.remediation}`);
     }
@@ -181,6 +199,11 @@ function main() {
     process.exit(1);
   }
 
+  if (!VALID_FORMATS.has(args.format)) {
+    console.error(`[qnx-pulse error] Unsupported format '${args.format}'. Expected: terminal, json, markdown, sarif, junit`);
+    process.exit(1);
+  }
+
   let bundle;
   try {
     if (args.preset) {
@@ -208,6 +231,10 @@ function main() {
     rendered = formatJsonReport(report);
   } else if (args.format === 'markdown' || args.format === 'md') {
     rendered = formatMarkdownReport(report);
+  } else if (args.format === 'sarif') {
+    rendered = formatSarifReport(report);
+  } else if (args.format === 'junit') {
+    rendered = formatJunitReport(report);
   } else {
     rendered = formatTerminalReport(report);
   }
@@ -216,7 +243,9 @@ function main() {
     const outPath = path.resolve(args.out);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, rendered, 'utf8');
-    console.log(`[qnx-pulse] Report written to ${outPath} (verdict=${report.status}, exit=${report.exitCode})`);
+    console.log(
+      `[qnx-pulse] Report (${args.format}) written to ${outPath} (verdict=${report.status}, exit=${report.exitCode})`
+    );
   } else {
     console.log(rendered);
   }

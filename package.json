@@ -1,7 +1,7 @@
 {
   "name": "qnx-pulse-studio",
-  "version": "1.0.0",
-  "description": "QNX Neutrino 8.0 Real-Time IPC Trace Analyzer, Priority-Inversion Auditor, Host CLI, Target C Reference & Interactive 7-Step Codelab",
+  "version": "2.0.0",
+  "description": "QNX Neutrino 8.0 Real-Time IPC Trace Analyzer, Multi-Hop Priority-Inheritance & SMP Auditor, SARIF/JUnit CI Host CLI, Target C Reference & Interactive 7-Step Codelab",
   "type": "module",
   "license": "MIT",
   "keywords": [
@@ -24,10 +24,14 @@
   },
   "scripts": {
     "test": "node --test test/analyzer.test.js",
+    "sync": "node scripts/sync-assets.mjs",
     "cli": "node cli/qnx-pulse.mjs",
     "audit:ecu": "node cli/qnx-pulse.mjs analyze samples/brake-ecu-inversion --deadline 500",
+    "audit:multihop": "node cli/qnx-pulse.mjs analyze samples/adas-multihop-pi --deadline 500",
     "audit:clean": "node cli/qnx-pulse.mjs analyze samples/surgical-arm-clean --deadline 500",
     "audit:qemu": "node cli/qnx-pulse.mjs analyze samples/qemu-starter --deadline 500",
+    "audit:sarif": "node cli/qnx-pulse.mjs analyze samples/adas-multihop-pi --deadline 500 --format sarif",
+    "audit:junit": "node cli/qnx-pulse.mjs analyze samples/brake-ecu-inversion --deadline 500 --format junit",
     "dev": "node scripts/serve.mjs"
   },
   "engines": {

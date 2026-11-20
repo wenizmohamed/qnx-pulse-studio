@@ -1,0 +1,10 @@
+PID   TID   PROCESS         PRIO  STATE     BLOCKED                 THREAD_NAME
+6201  4     adas_fusion     65f   MUTEX     6201:2(g_fusion_mtx)    fusion_ctrl
+6201  5     adas_fusion     58f   MUTEX     6201:2(g_fusion_mtx)    lane_planner
+6201  2     adas_fusion     40f   MUTEX     6201:1(g_calib_mtx)     lidar_bridge
+6201  1     adas_fusion     15f   READY     -                       nvm_flusher
+6205  1     can_telemetry   50f   RUNNING   -                       can_logger
+6208  1     ota_service     28f   RUNNING   -                       ota_hasher
+6202  1     radar_broker    55f   RECEIVE   1                       radar_ipc
+6010  1     slogger2        21r   RECEIVE   1                       slogger2_main
+6012  1     pps             21r   RECEIVE   1                       pps_server

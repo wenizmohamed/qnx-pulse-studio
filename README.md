@@ -22,8 +22,8 @@ Debugging hard real-time timing faults on **QNX Neutrino 8.0** typically forces 
 | Layer | Location | Highlights |
 | --- | --- | --- |
 | **QNX 8.0 C11 Target Project** | [`target-qnx8/`](./target-qnx8) | `sensor_broker.c` (`name_attach`, `MsgReceive`/`MsgReply`, `MsgSendPulse`, `ClockCycles`, `SYSPAGE_ENTRY(qtime)->cycles_per_sec`, `SCHED_FIFO`, `/pps/qnx/telemetry`) + `motor_ctrl.c` (1 kHz hard-RT loop with `--inject-inversion` vs `--fixed-pi` using `PTHREAD_PRIO_INHERIT`), `Makefile`, `CMakeLists.txt`, `qnx8-toolchain.cmake`, `qnx8-qemu-x86_64.build`, QEMU scripts & `capture-diag.sh`. |
-| **Host Analyzer Core & CLI** | [`src/`](./src) + [`cli/qnx-pulse.mjs`](./cli/qnx-pulse.mjs) | Zero-dependency ESM parsers for `slog2info`, `pidin -F`, `traceprinter` CSV/native traces, and `/pps/` objects. Detects **Priority Inversions**, **Blocked `SEND`/`REPLY` IPC Chains**, **Hard-RT Deadline Jitter Violations (`>500us`)**, and **Thread Starvation** with CI exit codes (`0` / `2`) and JSON/Markdown reports. |
-| **Live Web Workbench** | [`public/index.html`](./public/index.html) | Industrial RTOS Oscilloscope UI with interactive SVG `SCHED_FIFO` Microkernel IPC & Priority Timeline (`SEND`/`REPLY`/`PULSE` arrows + crimson Priority Inversion bands), filterable `slog2` stream, `pidin` thread table, `/pps/` object tree inspector, drag-and-drop capture importer, and 1-click JSON/Markdown audit export. |
+| **Host Analyzer Core & CLI** | [`src/`](./src) + [`cli/qnx-pulse.mjs`](./cli/qnx-pulse.mjs) | Zero-dependency ESM parsers for `slog2info`, `pidin -F`, `traceprinter` CSV/native traces, and `/pps/` objects. Detects **Single-Hop & Multi-Hop Transitive Priority Inheritance Chains** (`A -> B -> C`) with exact **WCBL (Worst-Case Blocking Latency)** before/after `PTHREAD_PRIO_INHERIT`, **Blocked `SEND`/`REPLY` IPC Chains & Deadlocks**, **Multi-Core SMP CPU Migrations & Preemptions**, **Hard-RT Deadline Margin Histograms (`>500us`)**, and **Thread Starvation**. Exports **Terminal**, **JSON**, **Markdown**, **SARIF 2.1.0**, and **JUnit XML** with CI exit codes (`0` / `2`) + ready-to-drop [`.github/workflows/qnx-pulse-gate.yml`](./.github/workflows/qnx-pulse-gate.yml). |
+| **Live Web Workbench** | [`public/index.html`](./public/index.html) | Industrial RTOS Oscilloscope UI with interactive SVG `SCHED_FIFO` Microkernel IPC & SMP Core Affinity Timeline (`CPU0..CPU3` color-coded badges, migration diamonds, preemption counters, `SEND`/`REPLY`/`PULSE` arrows, crimson Priority Inversion bands), **Interactive Multi-Hop PI Blocking Tree SVG Diagram** with WCBL comparison bars, **4-Core SMP Utilization & Deadline Margin Histogram**, filterable `slog2`/`pidin`/`/pps` views, drag-and-drop capture importer, and 1-click JSON/Markdown/SARIF/JUnit export. |
 | **7-Step QNX 8.0 Codelab** | [`CODELAB.md`](./CODELAB.md) & [`public/codelab.html`](./public/codelab.html) | Step-by-step hands-on tutorial from `qcc -Vgcc_ntox86_64` and `mkifs` to QEMU x86_64 boot, reproducing a real 1,842 us priority inversion, fixing it to 112 us with `PTHREAD_PRIO_INHERIT`, and gating CI pipelines. |
 
 ---
@@ -61,19 +61,23 @@ Debugging hard real-time timing faults on **QNX Neutrino 8.0** typically forces 
 Requires **Node.js >= 18** (zero npm dependencies to install):
 
 ```bash
-# 1. Run full unit & CLI verification suite
+# 1. Run full 34-test deterministic kernel edge-case & CLI verification suite
 npm test
 
 # 2. Audit an automotive Brake ECU capture with an active Priority Inversion (exits 2)
 npm run audit:ecu
 
-# 3. Audit the Surgical Arm capture after applying PTHREAD_PRIO_INHERIT (exits 0)
+# 3. Audit the 4-Core SMP ADAS Multi-Hop Transitive PI Chain capture (exits 2)
+npm run audit:multihop
+
+# 4. Audit the Surgical Arm capture after applying PTHREAD_PRIO_INHERIT (exits 0)
 npm run audit:clean
 
-# 4. Generate a Markdown or JSON RT audit report for CI artifacts
-node cli/qnx-pulse.mjs analyze samples/brake-ecu-inversion --deadline 500 --format markdown --out audit-report.md
+# 5. Export SARIF 2.1.0 (GitHub Code Scanning) or JUnit XML for CI/CD pipelines
+node cli/qnx-pulse.mjs analyze samples/adas-multihop-pi --deadline 500 --format sarif --out reports/qnx-pulse.sarif
+node cli/qnx-pulse.mjs analyze samples/brake-ecu-inversion --deadline 500 --format junit --out reports/qnx-pulse.junit.xml
 
-# 5. Launch the local interactive Web Workbench & 7-Step Codelab
+# 6. Launch the local interactive Web Workbench & 7-Step Codelab
 npm run dev
 # Open http://127.0.0.1:4173/ and http://127.0.0.1:4173/codelab.html
 ```

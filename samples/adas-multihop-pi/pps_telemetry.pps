@@ -1,0 +1,16 @@
+@telemetry
+seq:n:60
+radar_targets:n:14
+lidar_points:n:64200
+ipc_service_us:n:26.00
+smp_cores_active:n:4
+status:s:DEGRADED_MULTIHOP_PI
+
+@adas_ecu
+mode:s:MULTIHOP_INVERSION
+mutex_protocol:s:PTHREAD_PRIO_NONE
+blocking_chain_hops:n:2
+max_jitter_us:n:2240.0
+deadline_budget_us:n:500.0
+inversion_detected:b:true
+active_faults:json:["TRANSITIVE_PI_CHAIN","PRIORITY_INVERSION","SMP_UNPINNED_MIGRATION","DEADLINE_EXCEEDED"]

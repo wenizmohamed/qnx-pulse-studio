@@ -32,6 +32,7 @@
           <span class="pill-micro-label">CAP</span>
           <select id="captureSelect" class="pill-select" aria-label="Select capture bundle">
             <option value="brake-ecu-inversion">brake-ecu-inversion.cap</option>
+            <option value="adas-multihop-pi">adas-multihop-pi.cap</option>
             <option value="surgical-arm-clean">surgical-arm-clean.cap</option>
             <option value="qemu-starter">qemu-starter.cap</option>
           </select>
@@ -169,19 +170,25 @@
               <span id="scrubTimeReadout" class="scrub-readout">t = 0µs</span>
             </div>
 
+            <button id="btnSmpLaneMode" class="stage-pill stage-pill-smp" type="button" aria-pressed="false">
+              SMP Core View
+            </button>
+
             <button id="btnComparePi" class="stage-pill stage-pill-compare" type="button">
               Compare Before vs After PI Fix
             </button>
 
             <div class="stage-export-group">
-              <button id="btnExportJson" class="stage-pill" type="button">Export JSON</button>
-              <button id="btnExportMd" class="stage-pill" type="button">Export MD</button>
+              <button id="btnExportJson" class="stage-pill" type="button">JSON</button>
+              <button id="btnExportMd" class="stage-pill" type="button">MD</button>
+              <button id="btnExportSarif" class="stage-pill" type="button">SARIF</button>
+              <button id="btnExportJunit" class="stage-pill" type="button">JUnit</button>
             </div>
           </div>
         </div>
 
         <div class="stage-legend-bar">
-          <div class="legend" aria-label="Thread state legend">
+          <div class="legend" aria-label="Thread state and SMP core legend">
             <span class="legend-item"><span class="swatch" style="background:#20B276"></span>RUNNING</span>
             <span class="legend-item"><span class="swatch" style="background:#00A3E8"></span>PI_BOOST</span>
             <span class="legend-item"><span class="swatch" style="background:#E6482E"></span>MUTEX</span>
@@ -189,6 +196,11 @@
             <span class="legend-item"><span class="swatch" style="background:#56A8E8"></span>RECEIVE</span>
             <span class="legend-item"><span class="swatch" style="background:#6C7686"></span>READY</span>
             <span class="legend-item"><span class="swatch swatch-hatched"></span>INVERSION</span>
+            <span class="legend-sep" aria-hidden="true">|</span>
+            <span class="legend-item"><span class="core-dot" style="background:#00A3E8"></span>CPU0</span>
+            <span class="legend-item"><span class="core-dot" style="background:#20B276"></span>CPU1</span>
+            <span class="legend-item"><span class="core-dot" style="background:#E59A28"></span>CPU2</span>
+            <span class="legend-item"><span class="core-dot" style="background:#A78BFA"></span>CPU3</span>
           </div>
           <span id="targetClockMeta" class="stage-target-tag">x86_64-neutrino-8.0 · SYSPAGE(qtime)</span>
         </div>
@@ -208,10 +220,12 @@
         <div class="inspector-topbar">
           <div class="pill-tab-track" role="tablist" aria-label="Inspector views">
             <button id="tabFindings" class="insp-tab active" data-tab="findings" role="tab" aria-selected="true" type="button">Findings (0)</button>
+            <button id="tabPiTree" class="insp-tab" data-tab="pitree" role="tab" aria-selected="false" type="button">PI Blocking Tree</button>
+            <button id="tabSmp" class="insp-tab" data-tab="smp" role="tab" aria-selected="false" type="button">SMP &amp; Margins</button>
             <button id="tabSlog2" class="insp-tab" data-tab="slog2" role="tab" aria-selected="false" type="button">slog2info</button>
             <button id="tabPidin" class="insp-tab" data-tab="pidin" role="tab" aria-selected="false" type="button">pidin -F</button>
             <button id="tabPps" class="insp-tab" data-tab="pps" role="tab" aria-selected="false" type="button">/pps</button>
-            <button id="tabCli" class="insp-tab" data-tab="cli" role="tab" aria-selected="false" type="button">CLI Command</button>
+            <button id="tabCli" class="insp-tab" data-tab="cli" role="tab" aria-selected="false" type="button">CLI / CI</button>
           </div>
 
           <div class="inspector-controls">
@@ -241,6 +255,81 @@
               </thead>
               <tbody id="findingsBody"></tbody>
             </table>
+          </div>
+
+          <!-- Multi-Hop PI Chain & Blocking Tree Pane -->
+          <div id="panePiTree" class="analytics-pane hidden">
+            <div class="pi-layout">
+              <div class="pi-diagram-card">
+                <div class="analytics-head">
+                  <div>
+                    <span class="analytics-kicker">TRANSITIVE MUTEX &amp; IPC OWNERSHIP GRAPH</span>
+                    <h3 class="analytics-title" id="piDiagramTitle">Multi-Hop Priority Inheritance Blocking Tree</h3>
+                  </div>
+                  <span id="piDiagramBadge" class="tag tag-CRITICAL">Unboosted Chain</span>
+                </div>
+                <div class="pi-svg-scroll">
+                  <svg id="piTreeSvg" class="pi-tree-svg" viewBox="0 0 920 270" role="img" aria-label="Multi-hop priority inheritance blocking chain diagram"></svg>
+                </div>
+                <div id="piTreeInspector" class="pi-inspector-bar">
+                  Click any thread node, mutex edge, or preemptor badge to inspect transitive boost priority and C11 remediation.
+                </div>
+              </div>
+
+              <div class="pi-wcbl-card">
+                <span class="analytics-kicker">WORST-CASE BLOCKING LATENCY (WCBL)</span>
+                <h3 class="analytics-title">Before vs. After <code>PTHREAD_PRIO_INHERIT</code></h3>
+                <div id="piWcblSummary" class="wcbl-summary"></div>
+                <div id="piChainList" class="wcbl-chain-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SMP Core Affinity, Preemptions & Deadline Margin Histogram Pane -->
+          <div id="paneSmp" class="analytics-pane hidden">
+            <div class="smp-top-grid">
+              <div class="smp-cores-card">
+                <div class="analytics-head">
+                  <div>
+                    <span class="analytics-kicker">SYMMETRIC MULTIPROCESSING (procnto-smp-instr)</span>
+                    <h3 class="analytics-title">CPU Core Utilization, Context Switches &amp; Preemptions</h3>
+                  </div>
+                  <span id="smpSummaryBadge" class="tag tag-INFO">2 Cores · 0 Migrations</span>
+                </div>
+                <div id="smpCoreGrid" class="smp-core-grid"></div>
+              </div>
+
+              <div class="smp-hist-card">
+                <div class="analytics-head">
+                  <div>
+                    <span class="analytics-kicker">HARD-RT TIMING HEADROOM</span>
+                    <h3 class="analytics-title">Deadline Margin Histogram</h3>
+                  </div>
+                  <span id="histHeadroomBadge" class="tag tag-CRITICAL">Margin -1342.4µs</span>
+                </div>
+                <div class="hist-svg-wrap">
+                  <svg id="marginHistogramSvg" class="hist-svg" viewBox="0 0 520 190" role="img" aria-label="Hard real-time deadline margin histogram"></svg>
+                </div>
+              </div>
+            </div>
+
+            <div class="table-wrap smp-table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Thread (PID:TID)</th>
+                    <th>Prio</th>
+                    <th>Primary Core</th>
+                    <th>Cores Used</th>
+                    <th>Migrations</th>
+                    <th>Preemptions</th>
+                    <th>Affinity Status</th>
+                    <th>QNX 8.0 Affinity Guidance</th>
+                  </tr>
+                </thead>
+                <tbody id="smpAffinityBody"></tbody>
+              </table>
+            </div>
           </div>
 
           <!-- slog2info Table -->

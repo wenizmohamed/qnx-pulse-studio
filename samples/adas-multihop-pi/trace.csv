@@ -1,0 +1,29 @@
+time_us,cpu,class,event,pid,tid,prio,target_pid,target_tid,detail
+0,0,THREAD,THRUNNING,6201,1,15,-,-,nvm_flusher acquires g_calib_mtx (PTHREAD_PRIO_NONE) cs_us=80
+30,1,THREAD,THRUNNING,6201,2,40,-,-,lidar_bridge acquires g_fusion_mtx cs_us=65
+55,1,SYNC,THMUTEX,6201,2,40,6201,1,Blocked on g_calib_mtx held by nvm_flusher(6201:1)
+70,0,THREAD,THRUNNING,6201,4,65,-,-,fusion_ctrl wakes on 1kHz monotonic timer on CPU0
+85,0,COMM,MSG_SENDV,6201,4,65,6202,1,MSG_TYPE_RADAR_FRAME seq=60
+92,3,THREAD,THRUNNING,6202,1,55,-,-,radar_ipc handles radar point cloud on CPU3
+118,3,COMM,MSG_REPLYV,6202,1,55,6201,4,RADAR_VALID frames=64
+125,3,COMM,MSG_PULSE,6202,1,55,6012,1,PULSE_CODE_RADAR_PPS seq=60
+135,2,THREAD,THRUNNING,6201,4,65,-,-,fusion_ctrl migrated CPU0->CPU2 unpinned
+150,2,SYNC,THMUTEX,6201,4,65,6201,2,Blocked on g_fusion_mtx held by lidar_bridge(6201:2)
+162,2,THREAD,THRUNNING,6201,5,58,-,-,lane_planner wakes on CPU2
+175,2,SYNC,THMUTEX,6201,5,58,6201,2,Blocked on g_fusion_mtx held by lidar_bridge(6201:2)
+185,0,THREAD,THREADY,6201,1,15,-,-,nvm_flusher preempted on CPU0 while holding g_calib_mtx
+190,0,THREAD,THRUNNING,6208,1,28,-,-,ota_hasher SHA-256 verification burst preempts prio 15
+210,1,THREAD,THRUNNING,6205,1,50,-,-,can_logger burst runs on CPU1 preempting prio 40 tier
+940,1,THREAD,THNANOSLEEP,6205,1,50,-,-,can_logger completes frame batch
+1020,0,THREAD,THNANOSLEEP,6208,1,28,-,-,ota_hasher pauses chunked verify
+1030,3,THREAD,THRUNNING,6208,1,28,-,-,ota_hasher migrated CPU0->CPU3 for second hash pass
+1260,3,THREAD,THNANOSLEEP,6208,1,28,-,-,ota_hasher finishes hash pass
+1270,0,THREAD,THRUNNING,6201,1,15,-,-,nvm_flusher resumes after 1085us starvation
+1350,0,SYNC,MUTEX_UNLOCK,6201,1,15,-,-,nvm_flusher releases g_calib_mtx
+1365,2,THREAD,THRUNNING,6201,2,40,-,-,lidar_bridge migrated CPU1->CPU2 and acquires g_calib_mtx
+1430,2,SYNC,MUTEX_UNLOCK,6201,2,40,-,-,lidar_bridge releases g_fusion_mtx
+1445,2,THREAD,THRUNNING,6201,4,65,-,-,fusion_ctrl unblocked jitter_us=2240.0
+1520,2,THREAD,THNANOSLEEP,6201,4,65,-,-,fusion_ctrl sleeps for next 1kHz tick
+1530,1,THREAD,THRUNNING,6201,5,58,-,-,lane_planner migrated CPU2->CPU1 and resumes
+1595,1,THREAD,THNANOSLEEP,6201,5,58,-,-,lane_planner completes cycle jitter_us=1185.6
+1610,3,THREAD,THRECEIVE,6202,1,55,-,-,radar_ipc idle in MsgReceive()

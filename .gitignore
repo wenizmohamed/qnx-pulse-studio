@@ -1,6 +1,8 @@
 node_modules/
 .vercel/
 target-qnx8/build/
+video_work/
+reports/
 *.kev
 .DS_Store
 Thumbs.db

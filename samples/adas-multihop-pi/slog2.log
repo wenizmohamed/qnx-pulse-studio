@@ -1,0 +1,10 @@
+Nov 19 11:30:00.008  radar_broker.6202   1000  5  radar_broker online pid=6202 chid=1 prio=55f cores=4 cycles_per_sec=2400000000
+Nov 19 11:30:00.032  adas_fusion.6201    2000  5  adas_fusion starting pid=6201 smp_cores=4 mode=--inject-multihop-inversion mutex_protocol=PTHREAD_PRIO_NONE
+Nov 19 11:30:00.140  adas_fusion.6201    2005  5  RT_TICK iter=10 jitter_us=88.2 fusion_ms=0.09 pi=PRIO_NONE
+Nov 19 11:30:00.240  adas_fusion.6201    2005  5  RT_TICK iter=20 jitter_us=142.5 fusion_ms=0.14 pi=PRIO_NONE
+Nov 19 11:30:00.340  adas_fusion.6201    2005  5  RT_TICK iter=30 jitter_us=268.4 fusion_ms=0.27 pi=PRIO_NONE
+Nov 19 11:30:00.440  adas_fusion.6201    2005  5  RT_TICK iter=40 jitter_us=412.0 fusion_ms=0.41 pi=PRIO_NONE
+Nov 19 11:30:00.540  adas_fusion.6201    2010  2  DEADLINE_VIOLATION iter=50 jitter_us=1185.6 budget_us=500.0 pi=PRIO_NONE
+Nov 19 11:30:00.640  adas_fusion.6201    2010  2  DEADLINE_VIOLATION iter=60 jitter_us=2240.0 budget_us=500.0 pi=PRIO_NONE
+Nov 19 11:30:00.740  adas_fusion.6201    2010  3  SMP_MIGRATION tid=4 moved CPU0->CPU2 without _NTO_TCTL_RUNMASK pinning
+Nov 19 11:30:00.840  adas_fusion.6201    2099  2  adas_fusion summary mode=MULTIHOP_INVERSION max_jitter_us=2240.0 violations=2/60

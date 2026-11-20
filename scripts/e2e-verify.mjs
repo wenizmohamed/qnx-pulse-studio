@@ -130,6 +130,63 @@ async function main() {
 
     results.homeDesktopOverflow = await checkOverflow(page);
 
+    // Verify new Rank-#1 Multi-Hop PI Blocking Tree, SMP Core View, & Deadline Margin Histogram on adas-multihop-pi
+    await page.selectOption('#captureSelect', 'adas-multihop-pi');
+    const mhBadge = await page.textContent('#verdictBadge');
+    const mhJitter = await page.textContent('#numMaxJitter');
+    if (!mhBadge.toLowerCase().includes('exit 2') || !mhJitter.includes('2240')) {
+      throw new Error(`adas-multihop-pi failed: badge=${mhBadge}, jitter=${mhJitter}`);
+    }
+
+    // Toggle SMP Core Affinity View on the obsidian oscilloscope
+    await page.click('#btnSmpLaneMode');
+    const smpPressed = await page.getAttribute('#btnSmpLaneMode', 'aria-pressed');
+    if (smpPressed !== 'true') {
+      throw new Error(`Expected #btnSmpLaneMode aria-pressed=true, got ${smpPressed}`);
+    }
+    await page.click('#btnSmpLaneMode');
+    results.smpCoreViewToggleOk = true;
+
+    // Verify Interactive Multi-Hop PI Blocking Tree SVG & WCBL panel
+    await page.click('#tabPiTree');
+    const piNodes = await page.locator('#piTreeSvg .pi-hit').count();
+    const wcblText = await page.textContent('#piWcblSummary');
+    if (piNodes < 5 || !wcblText.includes('145µs')) {
+      throw new Error(`PI Blocking Tree verification failed: nodes=${piNodes}, wcbl=${wcblText}`);
+    }
+    await page.locator('#piTreeSvg .pi-hit').first().click();
+    const piInspText = await page.textContent('#piTreeInspector');
+    if (!piInspText || piInspText.includes('Click any thread node')) {
+      throw new Error(`PI Blocking Tree click inspection did not update: ${piInspText}`);
+    }
+    await page.evaluate(() => {
+      const sec = document.getElementById('diagnosticsSection');
+      if (sec) sec.scrollIntoView({ block: 'start' });
+    });
+    await page.screenshot({ path: path.join(ASSETS_DIR, 'screen_4_multihop_pi.png'), fullPage: false });
+    results.piBlockingTreeOk = { hitNodes: piNodes };
+
+    // Verify 4-Core SMP Utilization + Deadline Margin Histogram + Affinity Table
+    await page.click('#tabSmp');
+    const coreTiles = await page.locator('#smpCoreGrid .smp-core-tile').count();
+    const histBars = await page.locator('#marginHistogramSvg rect').count();
+    const smpRows = await page.locator('#smpAffinityBody tr').count();
+    if (coreTiles !== 4 || histBars < 5 || smpRows < 5) {
+      throw new Error(`SMP & Margins verification failed: cores=${coreTiles}, histRects=${histBars}, rows=${smpRows}`);
+    }
+    results.smpAndMarginsOk = { coreTiles, histBars, smpRows };
+
+    // Verify mobile 390px overflow on adas-multihop-pi with PI Tree & SMP tabs open!
+    await page.setViewportSize({ width: 390, height: 844 });
+    results.smpMobileOverflow = await checkOverflow(page);
+    await page.click('#tabPiTree');
+    results.piTreeMobileOverflow = await checkOverflow(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    // Switch back to brake-ecu-inversion for remaining checks & screenshots
+    await page.selectOption('#captureSelect', 'brake-ecu-inversion');
+    await page.click('#tabFindings');
+
     // Verify 1-click Compare Before vs After PI Fix toggle
     await page.click('#btnComparePi');
     const cleanBadge = await page.textContent('#verdictBadge');
@@ -258,6 +315,8 @@ async function main() {
     const hasOverflow =
       results.homeDesktopOverflow.overflowPx > 0 ||
       results.homeMobileOverflow.overflowPx > 0 ||
+      results.smpMobileOverflow.overflowPx > 0 ||
+      results.piTreeMobileOverflow.overflowPx > 0 ||
       results.codelabDesktopOverflow.overflowPx > 0 ||
       results.codelabMobileOverflow.overflowPx > 0;
 
