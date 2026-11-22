@@ -33,11 +33,11 @@ const CPU_COLORS = ['#00A3E8', '#20B276', '#E59A28', '#A78BFA'];
 const CPU_TEXT_COLORS = ['#041724', '#081711', '#1B1204', '#160B2E'];
 
 const CAPTURE_TITLES = {
-  'brake-ecu-inversion': 'Brake ECU Priority Inversion',
-  'adas-multihop-pi': 'ADAS Multi-Hop PI Chain (4-Core SMP)',
-  'surgical-arm-clean': 'Surgical Arm Fixed PI',
-  'qemu-starter': 'QEMU x86_64 Starter Capture',
-  custom: 'Custom QNX 8.0 Capture'
+  'brake-ecu-inversion': 'Brake System Freeze (Priority Bug)',
+  'adas-multihop-pi': 'ADAS Multi-Hop Delay (4-Core CPU)',
+  'surgical-arm-clean': 'Surgical Robot Arm (Fixed & Safe)',
+  'qemu-starter': 'QEMU x86_64 Starter Trace',
+  custom: 'Custom QNX 8.0 Trace'
 };
 
 let currentBundle = PRESETS['brake-ecu-inversion'];
@@ -204,7 +204,7 @@ function renderSummary(report) {
 
   const badge = el('verdictBadge');
   badge.className = isPass ? 'status-pill status-pass' : 'status-pill status-fail';
-  badge.textContent = isPass ? 'PASS exit 0' : `FAIL exit ${report.exitCode}`;
+  badge.textContent = isPass ? 'SAFE PASS (exit 0)' : `SAFETY FAIL (exit ${report.exitCode})`;
 
   const brandLed = el('brandLed');
   if (brandLed) brandLed.className = isPass ? 'brand-dot is-pass' : 'brand-dot';
@@ -214,26 +214,26 @@ function renderSummary(report) {
 
   const heading = el('captureHeading');
   if (heading) {
-    heading.textContent = CAPTURE_TITLES[currentPresetId] || report.meta?.name || 'QNX 8.0 Capture';
+    heading.textContent = CAPTURE_TITLES[currentPresetId] || report.meta?.name || 'QNX 8.0 Trace';
   }
 
-  el('capThreads').textContent = `${report.summary.totalThreads} Threads (${report.summary.fifoThreads} FIFO)`;
+  el('capThreads').textContent = `${report.summary.totalThreads} Tasks (${report.summary.fifoThreads} Real-Time)`;
 
   const capInv = el('capInversions');
   if (report.summary.multiHopPiChains > 0) {
     const worstWcbl = report.multiHopPiChains[0]?.wcbl;
-    capInv.textContent = `${report.summary.multiHopPiChains} Multi-Hop PI (${worstWcbl?.beforePiUs ?? 0}µs)`;
+    capInv.textContent = `${report.summary.multiHopPiChains} Multi-Hop Freeze (${worstWcbl?.beforePiUs ?? 0}µs)`;
     capInv.className = 'metric-capsule capsule-signal';
   } else if (report.summary.priorityInversions > 0) {
     const peakUs = report.inversionBands[0]?.durationUs ?? 0;
-    capInv.textContent = `${report.summary.priorityInversions} Inversion (${peakUs}µs)`;
+    capInv.textContent = `${report.summary.priorityInversions} Freeze (${peakUs}µs)`;
     capInv.className = 'metric-capsule capsule-signal';
   } else {
-    capInv.textContent = '0 Inversions (Clean PI)';
+    capInv.textContent = '0 Freezes (Protected)';
     capInv.className = 'metric-capsule capsule-emerald';
   }
 
-  el('capContention').textContent = `${report.summary.ipcBlockChains} Blocked IPC · ${report.summary.smpMigrations} Migr · ${report.summary.smpPreemptions} Preempts`;
+  el('capContention').textContent = `${report.summary.ipcBlockChains} Blocked · ${report.summary.smpMigrations} Core Moves · ${report.summary.smpPreemptions} Interrupts`;
   el('capKernel').textContent = extractKernelLabel(report.meta?.target);
 
   const targetClock = el('targetClockMeta');
@@ -256,10 +256,10 @@ function renderSummary(report) {
   if (compareBtn) {
     if (currentPresetId === 'surgical-arm-clean') {
       compareBtn.classList.add('is-clean');
-      compareBtn.textContent = 'Compare: Before PI Fix (1842µs)';
+      compareBtn.textContent = 'Compare: Before Fix (1842µs)';
     } else {
       compareBtn.classList.remove('is-clean');
-      compareBtn.textContent = 'Compare Before vs After PI Fix';
+      compareBtn.textContent = 'Compare Before vs. After Fix';
     }
   }
 }

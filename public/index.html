@@ -29,23 +29,23 @@
 
       <div class="nav-zone-right">
         <label class="control-pill select-pill" for="captureSelect">
-          <span class="pill-micro-label">CAP</span>
+          <span class="pill-micro-label">TRACE</span>
           <select id="captureSelect" class="pill-select" aria-label="Select capture bundle">
-            <option value="brake-ecu-inversion">brake-ecu-inversion.cap</option>
-            <option value="adas-multihop-pi">adas-multihop-pi.cap</option>
-            <option value="surgical-arm-clean">surgical-arm-clean.cap</option>
-            <option value="qemu-starter">qemu-starter.cap</option>
+            <option value="brake-ecu-inversion">Brake Freeze Bug (.cap)</option>
+            <option value="adas-multihop-pi">ADAS Multi-Hop Delay (.cap)</option>
+            <option value="surgical-arm-clean">Surgical Arm Fixed (.cap)</option>
+            <option value="qemu-starter">QEMU Starter Trace (.cap)</option>
           </select>
         </label>
 
         <label class="control-pill budget-pill" for="deadlineInput">
-          <span class="pill-micro-label">BUDGET</span>
-          <input id="deadlineInput" class="pill-num-input" type="number" min="50" max="5000" step="25" value="500" aria-label="Deadline budget in microseconds" />
+          <span class="pill-micro-label">LIMIT</span>
+          <input id="deadlineInput" class="pill-num-input" type="number" min="50" max="5000" step="25" value="500" aria-label="Safety time limit in microseconds" />
           <span class="pill-unit">us</span>
         </label>
 
-        <button id="btnToggleImport" class="control-pill action-pill" type="button">Open capture</button>
-        <span id="verdictBadge" class="status-pill status-fail">FAIL exit 2</span>
+        <button id="btnToggleImport" class="control-pill action-pill" type="button">Import trace</button>
+        <span id="verdictBadge" class="status-pill status-fail">SAFETY FAIL (exit 2)</span>
       </div>
     </header>
 
@@ -89,27 +89,28 @@
     <section class="masthead" id="summaryStrip" aria-label="Capture telemetry overview">
       <div class="masthead-left">
         <h1 class="masthead-title">
-          <span id="captureHeading">Brake ECU Priority Inversion</span>
-          <span class="masthead-serif">Neutrino 8.0</span>
+          <span id="captureHeading">Brake System Freeze (Priority Bug)</span>
+          <span class="masthead-serif">QNX 8.0</span>
         </h1>
+        <p style="margin:6px 0 12px;font-size:13.5px;color:#525866;max-width:680px;">Spots hidden real-time freezes in QNX 8.0 car brakes and surgical robots down to the microsecond, showing exactly which background task caused the delay and how to fix it.</p>
 
         <div class="capsule-row" role="list" aria-label="Capture breakdown capsules">
           <div class="capsule-group" role="listitem">
-            <span class="capsule-label">Threads</span>
-            <span id="capThreads" class="metric-capsule capsule-obsidian">7 Threads (5 FIFO)</span>
+            <span class="capsule-label">Active Tasks</span>
+            <span id="capThreads" class="metric-capsule capsule-obsidian">7 Tasks (5 Real-Time)</span>
           </div>
           <div class="capsule-group" role="listitem">
-            <span class="capsule-label">Inversions</span>
-            <span id="capInversions" class="metric-capsule capsule-signal">1 Inversion (1390µs)</span>
+            <span class="capsule-label">Priority Freezes</span>
+            <span id="capInversions" class="metric-capsule capsule-signal">1 Freeze (1390µs)</span>
           </div>
           <div class="capsule-group capsule-group-wide" role="listitem">
-            <span class="capsule-label">IPC Contention</span>
+            <span class="capsule-label">Blocked Messages</span>
             <div class="hatched-capsule-track">
               <span id="capContention" class="hatched-capsule-text">2 Blocked IPC · 1 Starved</span>
             </div>
           </div>
           <div class="capsule-group" role="listitem">
-            <span class="capsule-label">Kernel</span>
+            <span class="capsule-label">QNX Kernel</span>
             <span id="capKernel" class="metric-capsule capsule-white">procnto-smp-instr</span>
           </div>
         </div>
@@ -123,7 +124,7 @@
             </svg>
             <span id="numMaxJitter" class="numeral-value is-bad">1842.4µs</span>
           </div>
-          <span class="numeral-caption">Max Jitter</span>
+          <span class="numeral-caption">Worst Delay</span>
         </div>
 
         <div class="numeral-block">
@@ -134,7 +135,7 @@
             </svg>
             <span id="numBudget" class="numeral-value">500µs</span>
           </div>
-          <span class="numeral-caption">Budget</span>
+          <span class="numeral-caption">Safe Limit</span>
         </div>
 
         <div class="numeral-block">
@@ -144,7 +145,7 @@
             </svg>
             <span id="numCiGate" class="numeral-value is-bad">exit 2</span>
           </div>
-          <span class="numeral-caption">CI Gate</span>
+          <span class="numeral-caption">Safety Gate</span>
         </div>
       </div>
     </section>
@@ -152,11 +153,11 @@
     <!-- Main Workbench Stack -->
     <main class="studio-main">
       <!-- ONE High-Contrast Deep Obsidian Focal Anchor: Perfetto Hardware Oscilloscope -->
-      <section class="obsidian-stage" id="timelineSection" aria-label="Perfetto hardware oscilloscope kernel trace stage">
+      <section class="obsidian-stage" id="timelineSection" aria-label="Live QNX real-time task timeline">
         <div class="stage-topbar">
           <div class="stage-title-group">
             <span class="stage-led" id="stageLed" aria-hidden="true"></span>
-            <span class="stage-title">Perfetto Kernel Oscilloscope</span>
+            <span class="stage-title">Live QNX Kernel Timeline</span>
             <span id="timelineMeta" class="stage-meta">6 lanes · 1980µs · 5 IPC</span>
           </div>
 
@@ -164,18 +165,18 @@
             <div class="scrub-cluster">
               <button id="btnScrubPlay" class="stage-pill stage-pill-scrub" type="button" aria-pressed="false">
                 <span id="scrubPlayIcon" aria-hidden="true">&#9654;</span>
-                <span id="scrubPlayLabel">Scrub 0-&gt;1980µs</span>
+                <span id="scrubPlayLabel">Replay 0-&gt;1980µs</span>
               </button>
               <input id="scrubSlider" class="scrub-slider" type="range" min="0" max="1980" step="5" value="0" aria-label="Scrub microsecond cursor" />
               <span id="scrubTimeReadout" class="scrub-readout">t = 0µs</span>
             </div>
 
             <button id="btnSmpLaneMode" class="stage-pill stage-pill-smp" type="button" aria-pressed="false">
-              SMP Core View
+              CPU Core View
             </button>
 
             <button id="btnComparePi" class="stage-pill stage-pill-compare" type="button">
-              Compare Before vs After PI Fix
+              Compare Before vs. After Fix
             </button>
 
             <div class="stage-export-group">
